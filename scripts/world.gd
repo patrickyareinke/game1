@@ -9,12 +9,15 @@ const VILLAGE_CLEAR := 8.0          # radius (cells) kept free of water and prop
 const PLAZA := 3.5                  # radius of the dirt plaza around the fire
 const MOUNTAIN_R := 9               # mountain radius in cells
 const MOUNTAIN_PEAKS := 6           # small peaks behind the big front mountain
-const CAVE_REGION := 44             # cells x,y < this: sealed rock with the boss arena
-const ARENA := Vector2i(22, 22)     # arena centre (inside the sealed region)
+const CAVE_REGION := 44             # size of the sealed rock block holding the boss arena
+const VOID_GAP := 40                # empty, invisible cells between map and cave block
+const CAVE_X0 := MAP_SIZE + VOID_GAP   # the cave block starts here (off the map)
+const GRID_W := CAVE_X0 + CAVE_REGION  # grid width incl. void and cave block
+const ARENA := Vector2i(CAVE_X0 + 22, 22)   # arena centre (inside the cave block)
 const ARENA_R := 9.0
 const CAVE_TINT := Color(0.55, 0.5, 0.65)
 
-enum T { GRASS, DIRT, WATER, ROCK, CAVE }
+enum T { GRASS, DIRT, WATER, ROCK, CAVE, VOID }
 
 const TEX := {
 	"tree": preload("res://assets/sprites/tree.png"),
@@ -51,7 +54,7 @@ const HARVEST := {   # prop -> [tool needed, item, min, max]
 }
 const HITS_TO_HARVEST := 3
 
-var terrain := PackedByteArray()   # T per cell, index = y * MAP_SIZE + x
+var terrain := PackedByteArray()   # T per cell, index = y * GRID_W + x
 var variant := PackedByteArray()   # random 0..99 per cell for tile variety
 var props := {}                    # Vector2i -> { "type": String, "node": Sprite2D }
 var stashes := {}                  # Vector2i -> { "id": String, "count": int } (invisible)
@@ -138,22 +141,22 @@ func screen_to_grid(p: Vector2) -> Vector2i:
 
 
 func in_bounds(cell: Vector2i) -> bool:
-	return cell.x >= 0 and cell.y >= 0 and cell.x < MAP_SIZE and cell.y < MAP_SIZE
+	return cell.x >= 0 and cell.y >= 0 and cell.x < GRID_W and cell.y < MAP_SIZE
 
 
 func terrain_at(cell: Vector2i) -> int:
-	return terrain[cell.y * MAP_SIZE + cell.x]
+	return terrain[cell.y * GRID_W + cell.x]
 
 
 func variant_at(cell: Vector2i) -> int:
-	return variant[cell.y * MAP_SIZE + cell.x]
+	return variant[cell.y * GRID_W + cell.x]
 
 
 func is_walkable_cell(cell: Vector2i) -> bool:
 	if not in_bounds(cell) or props.has(cell):
 		return false
 	var t := terrain_at(cell)
-	return t != T.WATER and t != T.ROCK
+	return t != T.WATER and t != T.ROCK and t != T.VOID
 
 
 func is_walkable_at(p: Vector2) -> bool:
@@ -178,20 +181,23 @@ func _generate() -> void:
 	n_mountain.seed = rng.randi()
 	n_mountain.frequency = 0.15
 
-	terrain.resize(MAP_SIZE * MAP_SIZE)
-	variant.resize(MAP_SIZE * MAP_SIZE)
+	terrain.resize(GRID_W * MAP_SIZE)
+	variant.resize(GRID_W * MAP_SIZE)
 	_pick_landmarks()
 	var vc := Vector2(village)
 	var mc := Vector2(mountain)
 
 	for y in MAP_SIZE:
-		for x in MAP_SIZE:
+		for x in GRID_W:
 			var cell := Vector2i(x, y)
-			var i := y * MAP_SIZE + x
+			var i := y * GRID_W + x
 			variant[i] = rng.randi_range(0, 99)
-			# sealed rock region holding the boss arena
-			if x < CAVE_REGION and y < CAVE_REGION:
-				terrain[i] = T.CAVE if Vector2(cell).distance_to(Vector2(ARENA)) < ARENA_R else T.ROCK
+			# off the map: invisible void, then the sealed cave block
+			if x >= MAP_SIZE:
+				if x >= CAVE_X0 and y < CAVE_REGION:
+					terrain[i] = T.CAVE if Vector2(cell).distance_to(Vector2(ARENA)) < ARENA_R else T.ROCK
+				else:
+					terrain[i] = T.VOID
 				continue
 			# the mountain
 			if Vector2(cell).distance_to(mc) + n_mountain.get_noise_2d(x, y) * 3.0 < MOUNTAIN_R:
@@ -228,23 +234,19 @@ func _pick_landmarks() -> void:
 	## Village and mountain at random places, apart from each other and
 	## from the sealed cave region in the top corner.
 	var margin := 25
-	while true:
-		village = Vector2i(rng.randi_range(margin, MAP_SIZE - margin), rng.randi_range(margin, MAP_SIZE - margin))
-		if not (village.x < CAVE_REGION + 12 and village.y < CAVE_REGION + 12):
-			break
+	village = Vector2i(rng.randi_range(margin, MAP_SIZE - margin), rng.randi_range(margin, MAP_SIZE - margin))
 	for attempt in 500:
 		var m := Vector2i(rng.randi_range(MOUNTAIN_R + 8, MAP_SIZE - MOUNTAIN_R - 8),
 			rng.randi_range(MOUNTAIN_R + 8, MAP_SIZE - MOUNTAIN_R - 8))
 		var far_from_village := Vector2(m).distance_to(Vector2(village)) > MOUNTAIN_R + VILLAGE_CLEAR + 12
-		var outside_region := not (m.x - MOUNTAIN_R - 4 < CAVE_REGION and m.y - MOUNTAIN_R - 4 < CAVE_REGION)
-		if far_from_village and outside_region:
+		if far_from_village:
 			mountain = m
 			break
 
 
 func _set_terrain(cell: Vector2i, t: int) -> void:
 	if in_bounds(cell):
-		terrain[cell.y * MAP_SIZE + cell.x] = t
+		terrain[cell.y * GRID_W + cell.x] = t
 		props.erase(cell)
 
 
@@ -279,7 +281,7 @@ func _carve_tunnels() -> void:
 func _path_cost(c: Vector2i) -> int:
 	## Cost for the reachability search; -1 = impassable.
 	var t := terrain_at(c)
-	if t == T.ROCK:
+	if t == T.ROCK or t == T.VOID:
 		return -1
 	if props.has(c):
 		return -1 if props[c]["type"] in ["hut", "block", "fireplace"] else 4
@@ -290,7 +292,7 @@ func _ensure_cave_path() -> void:
 	## Cheapest route from the village to the cave (Dial's algorithm). Water
 	## on the route becomes a dirt ford, trees/rocks/bushes on it are removed,
 	## so the cave can always be reached on foot.
-	var n := MAP_SIZE * MAP_SIZE
+	var n := GRID_W * MAP_SIZE
 	var dist := PackedInt32Array()
 	dist.resize(n)
 	dist.fill(1 << 30)
@@ -298,8 +300,8 @@ func _ensure_cave_path() -> void:
 	parent.resize(n)
 	parent.fill(-1)
 	var start := village + Vector2i(1, 2)
-	var si := start.y * MAP_SIZE + start.x
-	var gi := mountain_exit.y * MAP_SIZE + mountain_exit.x
+	var si := start.y * GRID_W + start.x
+	var gi := mountain_exit.y * GRID_W + mountain_exit.x
 	var buckets := {0: [si]}
 	dist[si] = 0
 	var cur := 0
@@ -313,7 +315,7 @@ func _ensure_cave_path() -> void:
 				if idx == gi:
 					found = true
 					break
-				var cell := Vector2i(idx % MAP_SIZE, idx / MAP_SIZE)
+				var cell := Vector2i(idx % GRID_W, idx / GRID_W)
 				for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 					var nc: Vector2i = cell + d
 					if not in_bounds(nc):
@@ -321,7 +323,7 @@ func _ensure_cave_path() -> void:
 					var step := _path_cost(nc)
 					if step < 0:
 						continue
-					var ni := nc.y * MAP_SIZE + nc.x
+					var ni := nc.y * GRID_W + nc.x
 					if cur + step < dist[ni]:
 						dist[ni] = cur + step
 						parent[ni] = idx
@@ -336,7 +338,7 @@ func _ensure_cave_path() -> void:
 		return
 	var idx := gi
 	while idx != -1:
-		var c := Vector2i(idx % MAP_SIZE, idx / MAP_SIZE)
+		var c := Vector2i(idx % GRID_W, idx / GRID_W)
 		if terrain_at(c) == T.WATER:
 			terrain[idx] = T.DIRT
 		if props.has(c):
@@ -418,7 +420,7 @@ func _build_mountain_decor() -> void:
 	## of peaks; inside the cave only the back wall stays visible.
 	var arena_depth := ARENA.x + ARENA.y
 	for y in range(0, CAVE_REGION, 2):
-		for x in range(0, CAVE_REGION, 2):
+		for x in range(CAVE_X0, GRID_W, 2):
 			var cell := Vector2i(x + (y / 2) % 2, y)
 			if not in_bounds(cell) or terrain_at(cell) != T.ROCK:
 				continue

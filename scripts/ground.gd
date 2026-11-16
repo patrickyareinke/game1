@@ -39,14 +39,17 @@ func _tile(cell: Vector2i, index: int) -> void:
 
 func _draw() -> void:
 	var n: int = world.MAP_SIZE
+	var w: int = world.GRID_W
 	# 1) grass everywhere (also under dirt/water so ragged edges show grass)
 	for y in n:
-		for x in n:
+		for x in w:
 			var c := Vector2i(x, y)
 			var v: int = world.variant_at(c)
 			var t: int = world.terrain_at(c)
+			if t == world.T.VOID:
+				continue
 			if t == world.T.ROCK:
-				var cave_wall: bool = x < world.CAVE_REGION and y < world.CAVE_REGION
+				var cave_wall: bool = x >= world.CAVE_X0
 				_tile(c, (14 if cave_wall else 10) + v % 2)
 			elif t == world.T.CAVE:
 				_tile(c, 12 + v % 2)

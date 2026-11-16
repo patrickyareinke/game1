@@ -61,7 +61,7 @@ func _physics_process(delta: float) -> void:
 			return
 
 	var cell: Vector2i = world.screen_to_grid(position)
-	if not world.in_bounds(cell) or travelled > RANGE or world.terrain_at(cell) == world.T.ROCK:
+	if not world.in_bounds(cell) or travelled > RANGE or world.terrain_at(cell) in [world.T.ROCK, world.T.VOID]:
 		_end()
 		return
 	if world.props.has(cell):
