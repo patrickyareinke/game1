@@ -231,16 +231,15 @@ func _generate() -> void:
 
 
 func _pick_landmarks() -> void:
-	## Village and mountain at random places, apart from each other and
-	## from the sealed cave region in the top corner.
+	## The mountain always sits at the very top of the map (the top corner of
+	## the diamond), its cave facing down into the map. The village is random,
+	## but well away from it.
+	var j := rng.randi_range(-4, 4)          # small shift along the top edge
+	mountain = Vector2i(MOUNTAIN_R + 6 + j, MOUNTAIN_R + 6 - j)
 	var margin := 25
-	village = Vector2i(rng.randi_range(margin, MAP_SIZE - margin), rng.randi_range(margin, MAP_SIZE - margin))
 	for attempt in 500:
-		var m := Vector2i(rng.randi_range(MOUNTAIN_R + 8, MAP_SIZE - MOUNTAIN_R - 8),
-			rng.randi_range(MOUNTAIN_R + 8, MAP_SIZE - MOUNTAIN_R - 8))
-		var far_from_village := Vector2(m).distance_to(Vector2(village)) > MOUNTAIN_R + VILLAGE_CLEAR + 12
-		if far_from_village:
-			mountain = m
+		village = Vector2i(rng.randi_range(margin, MAP_SIZE - margin), rng.randi_range(margin, MAP_SIZE - margin))
+		if Vector2(village).distance_to(Vector2(mountain)) > MOUNTAIN_R + VILLAGE_CLEAR + 20:
 			break
 
 

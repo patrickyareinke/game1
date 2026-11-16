@@ -30,7 +30,7 @@ Every game generates a new random 160x160 world. Somewhere on it is a village (f
 
 ## The mountain & the Hive Mantis
 
-Somewhere on the map is a mountain: a handful of snowy peaks behind one very big front mountain with the cave mouth at its base. Every map guarantees a walkable route from the village to the cave (rivers get a dirt ford, blocking trees/rocks are cleared). Walk in to enter the boss cave (walk onto the glowing exit to leave).
+At the very top of the map is a mountain: a handful of snowy peaks behind one very big front mountain with the cave mouth at its base. Every map guarantees a walkable route from the village to the cave (rivers get a dirt ford, blocking trees/rocks are cleared). Walk in to enter the boss cave (walk onto the glowing exit to leave).
 
 The **Hive Mantis** guards its heart with a claw cage:
 1. **Burst the cage**: only *Magic Fiststamp* hurts it - 3 fist hits break it open (fireballs and the stick just bounce off).
