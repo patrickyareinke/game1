@@ -4,7 +4,7 @@ extends Node2D
 
 const TILE_W := 32
 const TILE_H := 16
-const MAP_SIZE := 40
+const MAP_SIZE := 160
 const SEED := 1337
 
 enum T { GRASS, DIRT, WATER }
@@ -28,12 +28,12 @@ var variant := PackedByteArray()   # random 0..99 per cell for tile variety
 var props := {}                    # Vector2i -> { "type": String, "node": Sprite2D }
 var stashes := {}                  # Vector2i -> { "id": String, "count": int } (invisible)
 
-const ENEMY_COUNT := 12
+const ENEMY_COUNT := 200
 const ENEMY_SCRIPT := preload("res://scripts/enemy.gd")
 const PROJECTILE_SCRIPT := preload("res://scripts/projectile.gd")
 const FX_SCRIPT := preload("res://scripts/fx.gd")
 const ZONE_SCRIPT := preload("res://scripts/zone.gd")
-const HIDDEN_COUNT := 30
+const HIDDEN_COUNT := 400
 
 var rng := RandomNumberGenerator.new()
 var ground: Node2D
@@ -67,7 +67,7 @@ func _ready() -> void:
 	for i in ENEMY_COUNT:
 		_spawn_enemy()
 	var respawn := Timer.new()
-	respawn.wait_time = 8.0
+	respawn.wait_time = 2.0
 	respawn.autostart = true
 	respawn.timeout.connect(func():
 		if get_tree().get_nodes_in_group("enemies").size() < ENEMY_COUNT:
@@ -230,6 +230,7 @@ func _spawn_enemy() -> void:
 			continue
 		var e := ENEMY_SCRIPT.new()
 		e.world = self
+		e.kind = ["oil", "ash", "water"][rng.randi_range(0, 2)]
 		e.position = pos
 		entities.add_child(e)
 		return
@@ -238,10 +239,10 @@ func _spawn_enemy() -> void:
 func on_enemy_killed(enemy: Node2D) -> void:
 	var coins := rng.randi_range(1, 3)
 	Game.add_money(coins)
-	var text := "+%d coins" % coins
-	if rng.randf() < 0.7:
-		Game.add_item("oil")
-		text += "  +1 Oil"
+	var item: String = enemy.kind
+	var count := rng.randi_range(1, 2)
+	Game.add_item(item, count)
+	var text := "+%d %s  +%d coins" % [count, Game.ITEMS[item]["name"], coins]
 	popup(enemy.position + Vector2(0, -30), text, Color(1, 0.85, 0.3))
 	ring_fx(enemy.position, 14.0, Color(0.5, 1, 0.4))
 
@@ -393,7 +394,6 @@ func _unhandled_input(event: InputEvent) -> void:
 	if key and key.pressed and not key.echo and key.physical_keycode == KEY_B:
 		Game.build_mode = not Game.build_mode
 		Game.changed.emit()
-		ground.queue_redraw()
 		return
 
 	var mb := event as InputEventMouseButton

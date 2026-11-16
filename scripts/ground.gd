@@ -9,15 +9,27 @@ const HIGHLIGHT := Color(1, 1, 1, 0.3)
 
 var world: Node2D
 var hover := Vector2i(-1, -1)
+var highlight := Node2D.new()   # build-mode cursor, redrawn alone (map is big)
+
+
+func _ready() -> void:
+	highlight.draw.connect(_draw_highlight)
+	add_child(highlight)
 
 
 func _process(_delta: float) -> void:
-	if not Game.build_mode:
-		return
 	var cell: Vector2i = world.screen_to_grid(get_global_mouse_position())
-	if cell != hover:
+	if cell != hover or not Game.build_mode:
 		hover = cell
-		queue_redraw()
+		highlight.queue_redraw()
+
+
+func _draw_highlight() -> void:
+	if Game.build_mode and world.in_bounds(hover):
+		var t: Vector2 = world.grid_to_screen(hover)
+		highlight.draw_colored_polygon(PackedVector2Array([
+			t, t + Vector2(16, 8), t + Vector2(0, 16), t + Vector2(-16, 8)
+		]), HIGHLIGHT)
 
 
 func _tile(cell: Vector2i, index: int) -> void:
@@ -41,9 +53,3 @@ func _draw() -> void:
 				var c := Vector2i(x, y)
 				if world.terrain_at(c) == kind:
 					_tile(c, base + world.variant_at(c) % 2)
-
-	if Game.build_mode and world.in_bounds(hover):
-		var t: Vector2 = world.grid_to_screen(hover)
-		draw_colored_polygon(PackedVector2Array([
-			t, t + Vector2(16, 8), t + Vector2(0, 16), t + Vector2(-16, 8)
-		]), HIGHLIGHT)

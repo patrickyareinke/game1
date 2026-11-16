@@ -93,9 +93,9 @@ func reset() -> void:
 	hp = MAX_HP
 	add_item("stick")
 	add_item("spellbook")
-	add_item("oil", 3)
-	add_item("ash", 3)
-	add_item("water", 3)
+	add_item("oil", 20)
+	add_item("ash", 20)
+	add_item("water", 20)
 
 
 # --- stats -----------------------------------------------------------------

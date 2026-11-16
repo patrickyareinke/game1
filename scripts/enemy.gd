@@ -1,13 +1,20 @@
 extends Node2D
 ## Slime enemy: wanders, chases the player when close, hurts on contact.
+## Three kinds, each dropping one alchemy ingredient.
 
-const MAX_HP := 3.0
-const SPEED := 30.0
+const KINDS := {
+	"oil": {"name": "Oil Slime", "hp": 3.0, "speed": 30.0},
+	"ash": {"name": "Ash Slime", "hp": 2.0, "speed": 42.0},
+	"water": {"name": "Water Slime", "hp": 4.5, "speed": 24.0},
+}
 const CHASE_RANGE := 90.0
+const ACTIVE_RANGE := 400.0   # slimes further away than this sleep (performance)
 const TOUCH_RANGE := 9.0
 
 var world: Node2D
-var hp := MAX_HP
+var kind := "oil"             # also the ingredient it drops
+var hp := 3.0
+var speed_base := 30.0
 var slow_t := 0.0
 var root_t := 0.0
 var dead := false
@@ -23,7 +30,9 @@ func _ready() -> void:
 	add_to_group("enemies")
 	anim = randf() * 2.0
 	sprite = Sprite2D.new()
-	sprite.texture = preload("res://assets/sprites/slime.png")
+	hp = KINDS[kind]["hp"]
+	speed_base = KINDS[kind]["speed"]
+	sprite.texture = load("res://assets/sprites/slime_%s.png" % kind)
 	sprite.hframes = 2
 	sprite.centered = false
 	sprite.offset = Vector2(-9, -15)
@@ -44,6 +53,8 @@ func _physics_process(delta: float) -> void:
 
 	var player: Node2D = world.player
 	var to_player := player.position - position
+	if to_player.length() > ACTIVE_RANGE:
+		return
 	var dir := Vector2.ZERO
 	if to_player.length() < CHASE_RANGE:
 		dir = to_player.normalized()
@@ -54,7 +65,7 @@ func _physics_process(delta: float) -> void:
 			wander_dir = Vector2.from_angle(randf() * TAU) * 0.5 if randf() < 0.7 else Vector2.ZERO
 		dir = wander_dir
 
-	var speed := SPEED * (0.35 if slow_t > 0.0 else 1.0)
+	var speed := speed_base * (0.35 if slow_t > 0.0 else 1.0)
 	if root_t > 0.0:
 		speed = 0.0
 	var step := dir * speed * delta + knock * delta

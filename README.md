@@ -47,9 +47,14 @@ After a spell hits enemies 10 times, the game pauses and you pick one of three u
 | Mudball | **Sticky Puddle**: slowing mud puddle | **Ricochet Mud**: bounces to 2 more enemies | **Quicksand**: enemies stuck for 2 s |
 | Magic Fiststamp | **Slap Hand**: bigger push-back area, 60% damage | **Double Fist**: two fists scattered around the cursor | **Fast Fist**: +25% damage, quake slows enemies |
 
-Where ingredients come from: **Oil** from slimes (70 %), **Ash** from burning bushes, **Water** with F at a pond. Slimes also drop 1-3 coins.
+You start with 20 of each ingredient. More come from:
+- **Slimes** (200 on the 160x160 map, 3 kinds), each dropping 1-2 of its ingredient plus 1-3 coins:
+  - Oil Slime (amber): normal speed, 3 HP
+  - Ash Slime (grey, embers): fast, 2 HP
+  - Water Slime (blue): slow, 4.5 HP
+- Burning bushes with a fireball (2 Ash), pressing F at a pond (1 Water)
 
-30 invisible stashes are hidden next to trees (oil), rocks and bushes (ash) and ponds (water). Walk over one to find it.
+400 invisible stashes are hidden next to trees (oil), rocks and bushes (ash) and ponds (water). Walk over one to find it.
 
 ## Folder layout
 
@@ -67,7 +72,7 @@ scripts/fx.gd              impact ring effect
 scripts/zone.gd            lava / mud puddle / quake ground effects
 assets/icons/*.png         16x16 item and spell icons
 assets/tiles/terrain.png   terrain atlas, 10 cells of 40x20
-assets/sprites/*.png       player, tree, bush, rock, crate, stick
+assets/sprites/*.png       player, slimes, tree, bush, rock, crate, stick
 tools/make_placeholder_art.py  regenerates all placeholder art
 ```
 

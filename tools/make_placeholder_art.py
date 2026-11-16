@@ -424,20 +424,40 @@ def make_icons():
     save(add_outline(img), "icons", "fiststamp.png")
 
 
-def make_slime():
+def make_slime(name, base, light, shine, eye, extra=None):
     """2 frames of 18x16, feet at (9, 14)."""
     sheet = Image.new("RGBA", (36, 16))
     for f, box in enumerate([(2, 5, 15, 14), (1, 7, 16, 14)]):
         img = Image.new("RGBA", (18, 16))
         d = ImageDraw.Draw(img)
-        d.ellipse(box, fill=c("3e9a3a"))
-        d.ellipse((box[0] + 1, box[1], box[2] - 3, box[3] - 3), fill=c("5ec04e"))
-        d.point([(box[0] + 3, box[1] + 2), (box[0] + 4, box[1] + 2)], fill=c("c8f0b0"))
+        d.ellipse(box, fill=base)
+        d.ellipse((box[0] + 1, box[1], box[2] - 3, box[3] - 3), fill=light)
+        d.point([(box[0] + 3, box[1] + 2), (box[0] + 4, box[1] + 2)], fill=shine)
         ey = box[1] + 4
-        d.point([(7, ey), (11, ey), (7, ey + 1), (11, ey + 1)], fill=c("1a2a14"))
+        d.point([(7, ey), (11, ey), (7, ey + 1), (11, ey + 1)], fill=eye)
+        if extra:
+            extra(d, box, f)
         add_outline(img)
         sheet.paste(img, (f * 18, 0))
-    save(sheet, "sprites", "slime.png")
+    save(sheet, "sprites", name + ".png")
+
+
+def make_slimes():
+    # Oil slime: dark amber with a glossy sheen
+    make_slime("slime_oil", c("8a5a14"), c("c8861e"), c("ffe8a0"), c("1a1208"),
+               lambda d, b, f: d.point([(b[2] - 4, b[3] - 3), (b[2] - 5, b[3] - 2)], fill=c("5a3a0c")))
+
+    # Ash slime: grey with glowing ember spots and a smoke wisp
+    def embers(d, b, f):
+        d.point([(b[0] + 3, b[3] - 3), (b[2] - 3, b[3] - 4), (9, b[3] - 2)], fill=c("f06a1c"))
+        d.point([(10 + f, b[1] - 2), (11, b[1] - 3 + f)], fill=c("b8b8bc"))
+    make_slime("slime_ash", c("4e4e56"), c("7a7a84"), c("c8c8d0"), c("f8a030"), embers)
+
+    # Water slime: blue with bubbles inside
+    def bubbles(d, b, f):
+        d.ellipse((b[2] - 6, b[3] - 5, b[2] - 4, b[3] - 3), outline=c("c8ecff"))
+        d.point([(b[0] + 4, b[3] - 3)], fill=c("c8ecff"))
+    make_slime("slime_water", c("2a6ab8"), c("4a9ae0"), c("e0f6ff"), c("0c1a3a"), bubbles)
 
 
 def make_projectiles():
@@ -603,7 +623,7 @@ if __name__ == "__main__":
     make_stick()
     make_player()
     make_icons()
-    make_slime()
+    make_slimes()
     make_projectiles()
     make_faces()
     make_slap()
