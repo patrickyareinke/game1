@@ -81,11 +81,11 @@ func _centered(c: Control) -> void:
 
 func _build_hud() -> void:
 	face = TextureRect.new()
-	face.position = Vector2(SCREEN.x / 2.0 - 8.0, 2)
+	face.position = Vector2(SCREEN.x / 2.0 - 8.0, SCREEN.y - 28.0)
 	add_child(face)
 
 	hp_bar = Control.new()
-	hp_bar.position = Vector2(SCREEN.x / 2.0 - 40.0, 20)
+	hp_bar.position = Vector2(SCREEN.x / 2.0 - 40.0, SCREEN.y - 10.0)
 	hp_bar.size = Vector2(80, 7)
 	hp_bar.draw.connect(_draw_hp)
 	add_child(hp_bar)
