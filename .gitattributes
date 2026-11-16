@@ -1,0 +1,6 @@
+# Normalize line endings (Windows <-> Linux)
+* text=auto eol=lf
+
+*.png binary
+*.wav binary
+*.ogg binary

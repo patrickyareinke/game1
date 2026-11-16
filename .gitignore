@@ -1,0 +1,12 @@
+# Godot 4 cache / editor data (regenerated automatically)
+.godot/
+
+# Exports
+/build/
+/export/
+*.exe
+*.pck
+
+# OS junk
+.DS_Store
+Thumbs.db
