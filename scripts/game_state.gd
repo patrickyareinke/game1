@@ -72,6 +72,9 @@ func _ready() -> void:
 	for id in ["stick", "spellbook", "oil", "ash", "water", "coin",
 			"fireball", "mudball", "fiststamp", "slap", "face", "face_hurt"]:
 		icons[id] = load("res://assets/icons/%s.png" % id)
+	for spell in UPGRADES:
+		for u in UPGRADES[spell]:
+			icons["up_" + u["key"]] = load("res://assets/icons/up_%s.png" % u["key"])
 	reset()
 
 
@@ -219,3 +222,10 @@ func upgrade_name(spell: String) -> String:
 		if u["key"] == spell_upgrade[spell]:
 			return u["name"]
 	return ""
+
+
+func spell_icon(spell: String) -> Texture2D:
+	## The upgrade's icon once one is chosen, otherwise the spell's own icon.
+	if spell_upgrade[spell] != "":
+		return icons["up_" + spell_upgrade[spell]]
+	return icons[spell]

@@ -492,6 +492,108 @@ def make_slap():
     save(img, "icons", "slap.png")
 
 
+def make_upgrade_icons():
+    """16x16 icons for the 9 spell upgrades: assets/icons/up_<key>.png"""
+    RED, ORANGE, YELLOW = c("d8381c"), c("f08a28"), c("f8e070")
+    MUD, MUD_L, MUD_D = c("6e4a2a"), c("9a7046"), c("3e2a18")
+    VIO, VIO_L, VIO_D = c("9a6ae0"), c("d8c0ff"), c("6a3ab0")
+
+    def fireball(d, cx, cy, r):
+        d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=RED)
+        d.ellipse((cx - r + 1, cy - r + 1, cx + r - 1, cy + r - 1), fill=ORANGE)
+        if r >= 3:
+            d.ellipse((cx - r // 2, cy - r // 2, cx, cy), fill=YELLOW)
+
+    # Big Fireball: huge ball with a flame tail and sparkle
+    img = icon(); d = ImageDraw.Draw(img)
+    d.polygon([(0, 15), (6, 6), (9, 10)], fill=RED)
+    fireball(d, 9, 7, 6)
+    d.point([(14, 1), (13, 2), (15, 2), (14, 3)], fill=c("fff8d0"))
+    save(add_outline(img), "icons", "up_big.png")
+
+    # Triple Fireball: three small balls in a fan
+    img = icon(); d = ImageDraw.Draw(img)
+    for (x, y) in ((3, 3), (12, 3), (8, 12)):
+        fireball(d, x, y, 2)
+        d.point([(x, y)], fill=YELLOW)
+    save(add_outline(img), "icons", "up_triple.png")
+
+    # Lavaball: glowing lava pool with a falling drop and bubbles
+    img = icon(); d = ImageDraw.Draw(img)
+    d.ellipse((1, 9, 14, 15), fill=c("7a1a0c"))
+    d.ellipse((2, 10, 13, 14), fill=c("e0501c"))
+    d.ellipse((4, 11, 9, 13), fill=c("f8b030"))
+    d.point([(11, 11), (6, 12)], fill=c("fff0a0"))
+    d.ellipse((6, 1, 10, 6), fill=RED)
+    d.ellipse((7, 2, 9, 4), fill=ORANGE)
+    d.point([(8, 7)], fill=RED)
+    save(add_outline(img), "icons", "up_lava.png")
+
+    # Sticky Puddle: flat mud puddle with ripples
+    img = icon(); d = ImageDraw.Draw(img)
+    d.ellipse((0, 7, 15, 15), fill=MUD_D)
+    d.ellipse((1, 8, 14, 14), fill=MUD)
+    d.ellipse((4, 9, 11, 13), outline=MUD_L)
+    d.point([(7, 11), (8, 11)], fill=MUD_L)
+    d.ellipse((5, 1, 10, 6), fill=MUD)
+    d.point([(6, 2)], fill=MUD_L)
+    save(add_outline(img), "icons", "up_puddle.png")
+
+    # Ricochet Mud: mudball with a bouncing dotted arc
+    img = icon(); d = ImageDraw.Draw(img)
+    d.ellipse((9, 1, 15, 7), fill=MUD)
+    d.point([(10, 2), (11, 2)], fill=MUD_L)
+    d.ellipse((1, 11, 5, 15), fill=MUD_D)
+    add_outline(img)
+    for (x, y) in ((3, 9), (4, 7), (6, 6), (7, 8), (8, 10), (9, 12), (10, 10), (11, 9)):
+        img.putpixel((x, y), c("f2e6c8"))  # bounce trail, not outlined
+    save(img, "icons", "up_bounce.png")
+
+    # Quicksand: sand swirl pulling something under
+    img = icon(); d = ImageDraw.Draw(img)
+    d.ellipse((0, 5, 15, 15), fill=c("b8955e"))
+    d.ellipse((3, 7, 12, 13), fill=c("9e7c4a"))
+    d.ellipse((5, 8, 10, 12), fill=c("86653a"))
+    d.ellipse((7, 9, 8, 11), fill=c("5e4026"))
+    d.arc((1, 6, 14, 14), 200, 340, fill=c("e0c890"))
+    d.ellipse((6, 1, 10, 5), fill=c("5ec04e"))  # a slime sinking in
+    d.point([(7, 3), (9, 3)], fill=c("1a2a14"))
+    save(add_outline(img), "icons", "up_quicksand.png")
+
+    # Slap Hand: open hand with motion lines
+    img = icon(); d = ImageDraw.Draw(img)
+    d.rounded_rectangle((6, 6, 14, 14), radius=2, fill=VIO)
+    for x in (6, 8, 10, 12):
+        d.rectangle((x, 1, x + 1, 7), fill=VIO)
+        d.point([(x, 2)], fill=VIO_L)
+    d.rectangle((3, 8, 6, 10), fill=VIO)
+    for y in (5, 9, 13):
+        d.line((0, y, 2, y), fill=c("f2e6c8"))
+    save(add_outline(img), "icons", "up_slap.png")
+
+    # Double Fist: two fists, one behind the other
+    img = icon(); d = ImageDraw.Draw(img)
+    for (ox, oy, col, lines) in ((0, 0, VIO_D, VIO), (6, 6, VIO, VIO_D)):
+        d.rounded_rectangle((ox + 1, oy + 1, ox + 9, oy + 8), radius=1, fill=col)
+        for x in (3, 5, 7):
+            d.line((ox + x, oy + 1, ox + x, oy + 3), fill=lines)
+    d.point([(9, 9), (10, 9)], fill=VIO_L)
+    save(add_outline(img), "icons", "up_double.png")
+
+    # Fast Fist: fist with speed lines and a ground crack
+    img = icon(); d = ImageDraw.Draw(img)
+    d.rounded_rectangle((5, 2, 13, 10), radius=2, fill=VIO)
+    for x in (7, 9, 11):
+        d.line((x, 7, x, 10), fill=VIO_D)
+    d.point([(6, 3), (7, 3)], fill=VIO_L)
+    for x in (6, 9, 12):
+        d.line((x, 0, x, 1), fill=c("f2e6c8"))
+    d.line((2, 14, 6, 12), fill=c("5e4026"))
+    d.line((6, 12, 9, 15), fill=c("5e4026"))
+    d.line((9, 13, 14, 12), fill=c("5e4026"))
+    save(add_outline(img), "icons", "up_fast.png")
+
+
 if __name__ == "__main__":
     make_terrain()
     make_tree()
@@ -505,3 +607,4 @@ if __name__ == "__main__":
     make_projectiles()
     make_faces()
     make_slap()
+    make_upgrade_icons()

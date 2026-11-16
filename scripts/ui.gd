@@ -28,6 +28,7 @@ var ring_items := {}     # spell id -> {"button": TextureButton, "label": Label,
 var upgrade_panel: PanelContainer
 var upgrade_title: Label
 var upgrade_labels: Array[Label] = []
+var upgrade_icons: Array[TextureRect] = []
 var upgrade_icon: TextureRect
 var pending_upgrades: Array[String] = []
 var upgrade_spell := ""
@@ -239,16 +240,24 @@ func _build_upgrade() -> void:
 	var hover := _box(SLOT_HOVER, GOLD, 2)
 	for i in 3:
 		var b := Button.new()
-		b.custom_minimum_size = Vector2(230, 28)
+		b.custom_minimum_size = Vector2(240, 28)
 		b.focus_mode = Control.FOCUS_NONE
 		b.add_theme_stylebox_override("normal", normal)
 		b.add_theme_stylebox_override("hover", hover)
 		b.add_theme_stylebox_override("pressed", hover)
 		b.pressed.connect(_on_upgrade_chosen.bind(i))
 		v.add_child(b)
+		var ic := TextureRect.new()
+		ic.position = Vector2(3, 2)
+		ic.size = Vector2(24, 24)
+		ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.add_child(ic)
+		upgrade_icons.append(ic)
 		var l := _label()
-		l.position = Vector2(6, 3)
-		l.size = Vector2(218, 22)
+		l.position = Vector2(32, 3)
+		l.size = Vector2(200, 22)
 		b.add_child(l)
 		upgrade_labels.append(l)
 
@@ -271,6 +280,7 @@ func _show_next_upgrade() -> void:
 	var options: Array = Game.UPGRADES[upgrade_spell]
 	for i in 3:
 		upgrade_labels[i].text = "%s\n%s" % [options[i]["name"], options[i]["desc"]]
+		upgrade_icons[i].texture = Game.icons["up_" + options[i]["key"]]
 	inv_panel.visible = false
 	book_panel.visible = false
 	ring.visible = false
@@ -377,6 +387,8 @@ func refresh() -> void:
 
 	for id in ring_items:
 		var it: Dictionary = ring_items[id]
-		it["label"].text = "%s\n%s" % [Game.SPELLS[id]["name"], Game.cost_text(id)]
+		var title: String = Game.upgrade_name(id) if Game.spell_upgrade[id] != "" else Game.SPELLS[id]["name"]
+		it["label"].text = "%s\n%s" % [title, Game.cost_text(id)]
+		it["button"].texture_normal = Game.spell_icon(id)
 		it["button"].modulate = Color.WHITE if Game.can_cast(id) else Color(1, 1, 1, 0.4)
 	ring.queue_redraw()
