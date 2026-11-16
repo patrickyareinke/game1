@@ -26,11 +26,14 @@ const FOOT := {
 var terrain := PackedByteArray()   # T per cell, index = y * MAP_SIZE + x
 var variant := PackedByteArray()   # random 0..99 per cell for tile variety
 var props := {}                    # Vector2i -> { "type": String, "node": Sprite2D }
+var stashes := {}                  # Vector2i -> { "id": String, "count": int } (invisible)
 
 const ENEMY_COUNT := 12
 const ENEMY_SCRIPT := preload("res://scripts/enemy.gd")
 const PROJECTILE_SCRIPT := preload("res://scripts/projectile.gd")
 const FX_SCRIPT := preload("res://scripts/fx.gd")
+const ZONE_SCRIPT := preload("res://scripts/zone.gd")
+const HIDDEN_COUNT := 30
 
 var rng := RandomNumberGenerator.new()
 var ground: Node2D
@@ -44,6 +47,7 @@ func _ready() -> void:
 
 	ground = preload("res://scripts/ground.gd").new()
 	ground.world = self
+	ground.z_index = -10               # ground zones (lava, mud) draw at -5
 	add_child(ground)
 
 	entities = Node2D.new()
@@ -52,6 +56,7 @@ func _ready() -> void:
 
 	for cell in props:
 		_spawn_prop_node(cell)
+	_hide_ingredients()
 
 	player = preload("res://scripts/player.gd").new()
 	player.world = self
@@ -169,6 +174,48 @@ func _remove_prop(cell: Vector2i) -> void:
 	props.erase(cell)
 
 
+# --- hidden ingredients -----------------------------------------------------
+
+func _hide_ingredients() -> void:
+	## Invisible stashes in free cells next to water, trees, rocks or bushes.
+	## The neighbour decides what you find.
+	var found_near := {"tree": "oil", "rock": "ash", "bush": "ash"}
+	var candidates := []
+	var start := Vector2(MAP_SIZE / 2, MAP_SIZE / 2)
+	for y in MAP_SIZE:
+		for x in MAP_SIZE:
+			var cell := Vector2i(x, y)
+			if not is_walkable_cell(cell) or Vector2(cell).distance_to(start) < 5.0:
+				continue
+			var item := ""
+			for dy in range(-1, 2):
+				for dx in range(-1, 2):
+					var n := cell + Vector2i(dx, dy)
+					if not in_bounds(n):
+						continue
+					if terrain_at(n) == T.WATER:
+						item = "water"
+					elif props.has(n) and item == "":
+						item = found_near.get(props[n]["type"], "")
+			if item != "":
+				candidates.append([cell, item])
+	candidates.shuffle()
+	for c in candidates.slice(0, HIDDEN_COUNT):
+		stashes[c[0]] = {"id": c[1], "count": randi_range(1, 2)}
+
+
+func check_hidden(cell: Vector2i) -> void:
+	## Called by the player on every new tile.
+	if not stashes.has(cell):
+		return
+	var h: Dictionary = stashes[cell]
+	stashes.erase(cell)
+	Game.add_item(h["id"], h["count"])
+	var pos := cell_center(cell)
+	popup(pos + Vector2(0, -36), "Found %d %s!" % [h["count"], Game.ITEMS[h["id"]]["name"]], Color(1, 0.9, 0.4))
+	ring_fx(pos, 14.0, Color(1, 0.9, 0.4), 0.5)
+
+
 # --- enemies ---------------------------------------------------------------
 
 func _spawn_enemy() -> void:
@@ -246,37 +293,68 @@ func burn_bush(cell: Vector2i) -> void:
 	ring_fx(pos, 16.0, Color(1, 0.5, 0.1))
 
 
-func spawn_projectile(kind: String, from: Vector2, to: Vector2, dmg: float) -> void:
+func spawn_projectile(kind: String, from: Vector2, to: Vector2, dmg: float, upgrade := "") -> void:
 	var p := PROJECTILE_SCRIPT.new()
 	# aim from the hand to the cursor, but travel along the ground
-	p.setup(self, kind, from, to + Vector2(0, 12), dmg)
+	p.setup(self, kind, from, to + Vector2(0, 12), dmg, upgrade)
 	entities.add_child(p)
 
 
-func spawn_fiststamp(target: Vector2, dmg: float) -> void:
+func spawn_fiststamp(target: Vector2, dmg: float, upgrade := "") -> void:
+	match upgrade:
+		"slap":
+			_drop_fist(target, dmg * 0.6, 70.0, 380.0, 0.18, 0.0, "slap", false)
+		"double":
+			for i in 2:
+				var off := Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(12.0, 50.0)
+				off.y *= 0.5
+				_drop_fist(target + off, dmg * 0.85, 34.0, 220.0, 0.18, i * 0.15, "fiststamp", false)
+		"fast":
+			_drop_fist(target, dmg * 1.25, 36.0, 240.0, 0.07, 0.0, "fiststamp", true)
+		_:
+			_drop_fist(target, dmg, 36.0, 220.0, 0.18, 0.0, "fiststamp", false)
+
+
+func _drop_fist(target: Vector2, dmg: float, radius: float, knockback: float,
+		fall_time: float, delay: float, tex: String, quake: bool) -> void:
 	var fist := Sprite2D.new()
-	fist.texture = Game.icons["fiststamp"]
-	fist.scale = Vector2(2, 2)
+	fist.texture = Game.icons[tex]
+	fist.scale = Vector2(2.5, 2.5) if tex == "slap" else Vector2(2, 2)
 	fist.z_index = 50
 	fist.position = target + Vector2(0, -70)
 	fist.modulate.a = 0.0
 	add_child(fist)
 	var tw := create_tween()
-	tw.tween_property(fist, "modulate:a", 1.0, 0.1)
-	tw.tween_property(fist, "position", target + Vector2(0, -12), 0.18) \
+	if delay > 0.0:
+		tw.tween_interval(delay)
+	tw.tween_property(fist, "modulate:a", 1.0, 0.08)
+	tw.tween_property(fist, "position", target + Vector2(0, -12), fall_time) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	tw.tween_callback(_fist_impact.bind(target, dmg))
+	tw.tween_callback(_fist_impact.bind(target, dmg, radius, knockback, quake))
 	tw.tween_property(fist, "modulate:a", 0.0, 0.2)
 	tw.tween_callback(fist.queue_free)
 
 
-func _fist_impact(target: Vector2, dmg: float) -> void:
-	const RADIUS := 28.0
-	ring_fx(target, RADIUS * 1.4, Color(0.75, 0.55, 1.0), 0.4)
+func _fist_impact(target: Vector2, dmg: float, radius: float, knockback: float, quake: bool) -> void:
+	ring_fx(target, radius, Color(0.75, 0.55, 1.0), 0.4)
 	for e in get_tree().get_nodes_in_group("enemies"):
 		var d: Vector2 = e.position - target
-		if Vector2(d.x, d.y * 2.0).length() < RADIUS * 2.0:  # iso ellipse
-			e.take_damage(dmg, target, 220.0)
+		if Vector2(d.x, d.y * 2.0).length() < radius:   # iso ellipse
+			e.take_damage(dmg, target, knockback, "fiststamp")
+	if quake:
+		spawn_zone("quake", target, 48.0, 3.0, 0.0)
+
+
+func spawn_zone(kind: String, pos: Vector2, radius: float, duration: float, dps: float) -> void:
+	var z := ZONE_SCRIPT.new()
+	z.world = self
+	z.kind = kind
+	z.position = pos
+	z.radius = radius
+	z.duration = duration
+	z.dps = dps
+	z.z_index = -5
+	add_child(z)
 
 
 func ring_fx(pos: Vector2, radius: float, color: Color, duration := 0.3) -> void:

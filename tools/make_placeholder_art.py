@@ -453,6 +453,45 @@ def make_projectiles():
     save(add_outline(img), "sprites", "mudball_proj.png")
 
 
+def make_faces():
+    """16x16 HUD portraits: normal and hurt (HP <= 3)."""
+    for name, hurt in (("face", False), ("face_hurt", True)):
+        img = icon(); d = ImageDraw.Draw(img)
+        d.rectangle((3, 4, 12, 13), fill=SKIN)
+        d.rectangle((12, 6, 12, 12), fill=SKIN_D)
+        d.rectangle((4, 13, 11, 14), fill=SKIN)
+        d.rectangle((3, 1, 12, 4), fill=HAIR)
+        d.rectangle((2, 3, 3, 9), fill=HAIR)
+        d.rectangle((12, 3, 13, 8), fill=HAIR_D)
+        d.rectangle((5, 1, 8, 1), fill=HAIR_L)
+        d.point([(4, 5), (6, 5), (9, 5), (11, 5)], fill=HAIR)
+        if hurt:
+            for (x, y) in ((5, 7), (9, 7)):
+                d.point([(x, y), (x + 1, y + 1), (x + 1, y), (x, y + 1)], fill=EYE)
+            d.line((6, 11, 9, 11), fill=EYE)
+            d.point([(6, 12), (9, 12)], fill=EYE)
+            d.point([(12, 3), (12, 4)], fill=c("8ad0f0"))  # sweat drop
+        else:
+            d.rectangle((5, 7, 5, 8), fill=EYE)
+            d.rectangle((10, 7, 10, 8), fill=EYE)
+            d.line((6, 11, 9, 11), fill=c("b0604a"))
+            d.point([(5, 11), (10, 10)], fill=c("b0604a"))
+        save(add_outline(img), "icons", name + ".png")
+
+
+def make_slap():
+    """Open magic hand for the Slap Hand upgrade."""
+    img = icon(); d = ImageDraw.Draw(img)
+    d.rounded_rectangle((4, 6, 12, 14), radius=2, fill=c("9a6ae0"))
+    for x in (4, 6, 8, 10):
+        d.rectangle((x, 1, x + 1, 7), fill=c("9a6ae0"))
+    d.rectangle((1, 7, 4, 9), fill=c("9a6ae0"))
+    for x in (5, 7, 9, 11):
+        d.point([(x, 2), (x, 3)], fill=c("d8c0ff"))
+    add_outline(img)
+    save(img, "icons", "slap.png")
+
+
 if __name__ == "__main__":
     make_terrain()
     make_tree()
@@ -464,3 +503,5 @@ if __name__ == "__main__":
     make_icons()
     make_slime()
     make_projectiles()
+    make_faces()
+    make_slap()

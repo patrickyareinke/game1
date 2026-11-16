@@ -35,9 +35,21 @@ Every cast also makes that spell +0.01 stronger.
 |---|---|---|
 | Fireball | 1 Oil + 1 Ash | 3 damage, burns bushes into 2 Ash |
 | Mudball | 1 Water | 1 damage, slows for 3 s |
-| Magic Fiststamp | none (2 s cooldown) | 2 area damage at the cursor + knockback |
+| Magic Fiststamp | none (2 s cooldown) | 2 area damage anywhere at the cursor + knockback |
+
+### Upgrades
+
+After a spell hits enemies 10 times, the game pauses and you pick one of three upgrades (once per spell). Spell effects never hurt the player.
+
+| Spell | Option A | Option B | Option C |
+|---|---|---|---|
+| Fireball | **Big Fireball**: +60% damage | **Triple Fireball**: 3 in a fan, 70% each | **Lavaball**: leaves a lava blob that burns enemies |
+| Mudball | **Sticky Puddle**: slowing mud puddle | **Ricochet Mud**: bounces to 2 more enemies | **Quicksand**: enemies stuck for 2 s |
+| Magic Fiststamp | **Slap Hand**: bigger push-back area, 60% damage | **Double Fist**: two fists scattered around the cursor | **Fast Fist**: +25% damage, quake slows enemies |
 
 Where ingredients come from: **Oil** from slimes (70 %), **Ash** from burning bushes, **Water** with F at a pond. Slimes also drop 1-3 coins.
+
+30 invisible stashes are hidden next to trees (oil), rocks and bushes (ash) and ponds (water). Walk over one to find it.
 
 ## Folder layout
 
@@ -52,6 +64,7 @@ scripts/ui.gd              HUD, inventory, spell ring, spellbook
 scripts/enemy.gd           slime enemy
 scripts/projectile.gd      fireball / mudball
 scripts/fx.gd              impact ring effect
+scripts/zone.gd            lava / mud puddle / quake ground effects
 assets/icons/*.png         16x16 item and spell icons
 assets/tiles/terrain.png   terrain atlas, 10 cells of 40x20
 assets/sprites/*.png       player, tree, bush, rock, crate, stick

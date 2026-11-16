@@ -12,7 +12,6 @@ const HAND := Vector2(0, -12)        # stick pivot, relative to the feet
 const SWING_TIME := 0.22
 const SWING_ARC := deg_to_rad(150.0)
 const REACH := 16.0
-const STAMP_RANGE := 90.0
 const INVULN_TIME := 1.0
 
 var world: Node2D
@@ -88,6 +87,7 @@ func _physics_process(delta: float) -> void:
 	if cell != last_cell:
 		last_cell = cell
 		Game.add_stat("fitness", Game.FITNESS_PER_TILE)
+		world.check_hidden(cell)
 
 	var f := int(walk_time * WALK_FPS) % 4 if moving else 0
 	sprite.frame = dir * 4 + f
@@ -153,14 +153,20 @@ func _cast(id: String) -> void:
 	var target := get_global_mouse_position()
 	dir = _dir_from(target - position)
 	var dmg: float = Game.spell_damage(id)
+	var up: String = Game.spell_upgrade[id]
 	match id:
-		"fireball", "mudball":
-			world.spawn_projectile(id, position, target, dmg)
+		"fireball":
+			if up == "triple":
+				for a in [-0.26, 0.0, 0.26]:
+					world.spawn_projectile(id, position, position + (target - position).rotated(a), dmg * 0.7)
+			elif up == "big":
+				world.spawn_projectile(id, position, target, dmg * 1.6, up)
+			else:
+				world.spawn_projectile(id, position, target, dmg, up)
+		"mudball":
+			world.spawn_projectile(id, position, target, dmg, up)
 		"fiststamp":
-			var off := target - position
-			if off.length() > STAMP_RANGE:
-				target = position + off.normalized() * STAMP_RANGE
-			world.spawn_fiststamp(target, dmg)
+			world.spawn_fiststamp(target, dmg, up)   # no range limit
 	cooldowns[id] = Game.SPELLS[id]["cooldown"]
 	Game.cast(id)
 

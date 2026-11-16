@@ -3,6 +3,7 @@ extends Node
 ## Everything that changes emits `changed`, and the UI redraws from it.
 
 signal changed
+signal upgrade_ready(spell: String)   # a spell reached UPGRADE_HITS
 
 const SLOTS := 40                    # 8 columns x 5 rows
 const MAX_HP := 10
@@ -24,6 +25,26 @@ const SPELLS := {
 		"cooldown": 2.0, "info": "Area hit at the cursor, knocks back"},
 }
 const SPELL_ORDER := ["fireball", "mudball", "fiststamp"]
+
+# After UPGRADE_HITS enemy hits with a spell you pick one of three upgrades.
+const UPGRADE_HITS := 10
+const UPGRADES := {
+	"fireball": [
+		{"key": "big", "name": "Big Fireball", "desc": "One huge fireball, +60% damage"},
+		{"key": "triple", "name": "Triple Fireball", "desc": "Three fireballs in a fan, 70% damage each"},
+		{"key": "lava", "name": "Lavaball", "desc": "Leaves a lava blob that burns enemies in it"},
+	],
+	"mudball": [
+		{"key": "puddle", "name": "Sticky Puddle", "desc": "Leaves a mud puddle that slows enemies"},
+		{"key": "bounce", "name": "Ricochet Mud", "desc": "Bounces on to 2 more nearby enemies"},
+		{"key": "quicksand", "name": "Quicksand", "desc": "Hit enemies are stuck in place for 2 s"},
+	],
+	"fiststamp": [
+		{"key": "slap", "name": "Slap Hand", "desc": "Much bigger push-back area, 60% damage"},
+		{"key": "double", "name": "Double Fist", "desc": "Two fists, scattered in a bigger area"},
+		{"key": "fast", "name": "Fast Fist", "desc": "Faster, +25% damage, quake slows enemies"},
+	],
+}
 const STAT_ORDER := ["fighter", "alchemy", "building", "fitness", "wisdom"]
 
 # Stat / spell growth per action
@@ -37,6 +58,8 @@ var icons := {}              # id -> Texture2D (items and spells)
 var stats := {}              # name -> float, shown as whole numbers
 var spell_power := {}        # spell id -> float
 var spell_casts := {}        # spell id -> int
+var spell_hits := {}         # spell id -> enemy hits so far
+var spell_upgrade := {}      # spell id -> chosen upgrade key ("" = none yet)
 var inventory: Array = []    # SLOTS entries: null or {"id": String, "count": int}
 var money := 0
 var hp := MAX_HP
@@ -47,7 +70,7 @@ var build_mode := false
 
 func _ready() -> void:
 	for id in ["stick", "spellbook", "oil", "ash", "water", "coin",
-			"fireball", "mudball", "fiststamp"]:
+			"fireball", "mudball", "fiststamp", "slap", "face", "face_hurt"]:
 		icons[id] = load("res://assets/icons/%s.png" % id)
 	reset()
 
@@ -59,6 +82,8 @@ func reset() -> void:
 	for s in SPELL_ORDER:
 		spell_power[s] = 1.0
 		spell_casts[s] = 0
+		spell_hits[s] = 0
+		spell_upgrade[s] = ""
 	inventory.clear()
 	inventory.resize(SLOTS)
 	money = 0
@@ -173,3 +198,24 @@ func spell_damage(spell: String) -> float:
 
 func stick_damage() -> float:
 	return 1.0 * stats["fighter"]
+
+
+func register_spell_hit(spell: String) -> void:
+	if not SPELLS.has(spell):
+		return
+	spell_hits[spell] += 1
+	if spell_hits[spell] == UPGRADE_HITS and spell_upgrade[spell] == "":
+		upgrade_ready.emit(spell)
+	changed.emit()
+
+
+func choose_upgrade(spell: String, key: String) -> void:
+	spell_upgrade[spell] = key
+	changed.emit()
+
+
+func upgrade_name(spell: String) -> String:
+	for u in UPGRADES[spell]:
+		if u["key"] == spell_upgrade[spell]:
+			return u["name"]
+	return ""

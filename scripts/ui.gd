@@ -1,6 +1,7 @@
 extends CanvasLayer
-## All on-screen UI: HUD, inventory (E), spell ring (Q), spellbook.
-## Built in code; it only reads from the Game autoload and redraws on Game.changed.
+## All on-screen UI: HP bar with face, inventory (E), spell ring (Q),
+## spellbook, spell-upgrade choice. Built in code; reads from the Game
+## autoload and redraws on Game.changed.
 
 const SLOT := 18
 const PANEL_BG := Color("1d2b6b")        # SNES-style blue menu
@@ -10,11 +11,11 @@ const SLOT_HOVER := Color("2d3f8f")
 const GOLD := Color("f2d64b")
 const RING_CENTER := Vector2(240, 135)
 const RING_RADIUS := 46.0
+const SCREEN := Vector2(480, 270)
 
-var hud_left: Label
-var hud_hint: Label
-var spell_icon: TextureRect
-var spell_label: Label
+var face: TextureRect
+var hp_bar: Control
+var build_label: Label
 var inv_panel: PanelContainer
 var slots: Array[Button] = []
 var slot_counts: Array[Label] = []
@@ -24,14 +25,23 @@ var book_panel: PanelContainer
 var book_label: Label
 var ring: Control
 var ring_items := {}     # spell id -> {"button": TextureButton, "label": Label, "pos": Vector2}
+var upgrade_panel: PanelContainer
+var upgrade_title: Label
+var upgrade_labels: Array[Label] = []
+var upgrade_icon: TextureRect
+var pending_upgrades: Array[String] = []
+var upgrade_spell := ""
 
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS   # UI keeps working while paused
 	_build_hud()
 	_build_inventory()
 	_build_book()
 	_build_ring()
+	_build_upgrade()
 	Game.changed.connect(refresh)
+	Game.upgrade_ready.connect(_on_upgrade_ready)
 	refresh()
 
 
@@ -60,33 +70,44 @@ func _label(text := "", color := Color.WHITE) -> Label:
 func _centered(c: Control) -> void:
 	## Add c to a screen-sized CenterContainer so it stays centered.
 	var cc := CenterContainer.new()
-	cc.position = Vector2.ZERO
-	cc.size = Vector2(480, 270)
+	cc.size = SCREEN
 	cc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(cc)
 	cc.add_child(c)
 
 
-# --- building --------------------------------------------------------------
+# --- HUD -------------------------------------------------------------------
 
 func _build_hud() -> void:
-	hud_left = _label()
-	hud_left.position = Vector2(4, 2)
-	add_child(hud_left)
+	face = TextureRect.new()
+	face.position = Vector2(SCREEN.x / 2.0 - 8.0, 2)
+	add_child(face)
 
-	hud_hint = _label("", Color(1, 1, 1, 0.8))
-	hud_hint.position = Vector2(4, 256)
-	add_child(hud_hint)
+	hp_bar = Control.new()
+	hp_bar.position = Vector2(SCREEN.x / 2.0 - 40.0, 20)
+	hp_bar.size = Vector2(80, 7)
+	hp_bar.draw.connect(_draw_hp)
+	add_child(hp_bar)
 
-	spell_icon = TextureRect.new()
-	spell_icon.position = Vector2(460, 3)
-	add_child(spell_icon)
-	spell_label = _label()
-	spell_label.position = Vector2(256, 5)
-	spell_label.size = Vector2(200, 12)
-	spell_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	add_child(spell_label)
+	build_label = _label("BUILD MODE  (B to exit)", GOLD)
+	build_label.position = Vector2(4, 2)
+	add_child(build_label)
 
+
+func _draw_hp() -> void:
+	var w := hp_bar.size.x
+	var h := hp_bar.size.y
+	var frac := float(Game.hp) / Game.MAX_HP
+	hp_bar.draw_rect(Rect2(0, 0, w, h), Color("1a1220"))
+	hp_bar.draw_rect(Rect2(1, 1, w - 2, h - 2), Color("4a1a20"))
+	hp_bar.draw_rect(Rect2(1, 1, (w - 2) * frac, h - 2), Color("d8382c"))
+	hp_bar.draw_rect(Rect2(1, 1, (w - 2) * frac, 2), Color("f2806a"))
+	for i in range(1, Game.MAX_HP):
+		var x := 1.0 + (w - 2.0) * i / Game.MAX_HP
+		hp_bar.draw_line(Vector2(x, 1), Vector2(x, h - 1), Color(0, 0, 0, 0.35))
+
+
+# --- inventory -------------------------------------------------------------
 
 func _build_inventory() -> void:
 	inv_panel = PanelContainer.new()
@@ -156,9 +177,11 @@ func _build_book() -> void:
 	book_panel.add_child(book_label)
 
 
+# --- spell ring ------------------------------------------------------------
+
 func _build_ring() -> void:
 	ring = Control.new()
-	ring.size = Vector2(480, 270)
+	ring.size = SCREEN
 	ring.visible = false
 	ring.gui_input.connect(func(ev: InputEvent):
 		if ev is InputEventMouseButton and ev.pressed:
@@ -193,9 +216,79 @@ func _draw_ring() -> void:
 	ring.draw_circle(pos, 20.0, Color(GOLD, 0.45))
 
 
+# --- upgrade choice --------------------------------------------------------
+
+func _build_upgrade() -> void:
+	upgrade_panel = PanelContainer.new()
+	upgrade_panel.add_theme_stylebox_override("panel", _box(Color("3a1d5e"), GOLD, 8))
+	upgrade_panel.visible = false
+	_centered(upgrade_panel)
+
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 4)
+	upgrade_panel.add_child(v)
+	var head := HBoxContainer.new()
+	head.alignment = BoxContainer.ALIGNMENT_CENTER
+	upgrade_icon = TextureRect.new()
+	head.add_child(upgrade_icon)
+	upgrade_title = _label("", GOLD)
+	head.add_child(upgrade_title)
+	v.add_child(head)
+
+	var normal := _box(PANEL_BG, Color("5a6ab0"), 2)
+	var hover := _box(SLOT_HOVER, GOLD, 2)
+	for i in 3:
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(230, 28)
+		b.focus_mode = Control.FOCUS_NONE
+		b.add_theme_stylebox_override("normal", normal)
+		b.add_theme_stylebox_override("hover", hover)
+		b.add_theme_stylebox_override("pressed", hover)
+		b.pressed.connect(_on_upgrade_chosen.bind(i))
+		v.add_child(b)
+		var l := _label()
+		l.position = Vector2(6, 3)
+		l.size = Vector2(218, 22)
+		b.add_child(l)
+		upgrade_labels.append(l)
+
+
+func _on_upgrade_ready(spell: String) -> void:
+	pending_upgrades.append(spell)
+	if not upgrade_panel.visible:
+		_show_next_upgrade()
+
+
+func _show_next_upgrade() -> void:
+	if pending_upgrades.is_empty():
+		upgrade_panel.visible = false
+		get_tree().paused = false
+		_update_ui_open()
+		return
+	upgrade_spell = pending_upgrades.pop_front()
+	upgrade_icon.texture = Game.icons[upgrade_spell]
+	upgrade_title.text = "  %s mastered! Choose an upgrade:" % Game.SPELLS[upgrade_spell]["name"]
+	var options: Array = Game.UPGRADES[upgrade_spell]
+	for i in 3:
+		upgrade_labels[i].text = "%s\n%s" % [options[i]["name"], options[i]["desc"]]
+	inv_panel.visible = false
+	book_panel.visible = false
+	ring.visible = false
+	upgrade_panel.visible = true
+	get_tree().paused = true
+	_update_ui_open()
+
+
+func _on_upgrade_chosen(i: int) -> void:
+	Game.choose_upgrade(upgrade_spell, Game.UPGRADES[upgrade_spell][i]["key"])
+	_show_next_upgrade()
+
+
 # --- input -----------------------------------------------------------------
 
 func _unhandled_input(event: InputEvent) -> void:
+	if upgrade_panel.visible:
+		return
 	var key := event as InputEventKey
 	if not (key and key.pressed and not key.echo):
 		return
@@ -233,7 +326,7 @@ func _set_ring(open: bool) -> void:
 
 
 func _update_ui_open() -> void:
-	Game.ui_open = inv_panel.visible or ring.visible
+	Game.ui_open = inv_panel.visible or ring.visible or upgrade_panel.visible
 
 
 func _pick_spell(id: String) -> void:
@@ -251,6 +344,10 @@ func _on_slot_pressed(i: int) -> void:
 # --- refresh ---------------------------------------------------------------
 
 func refresh() -> void:
+	face.texture = Game.icons["face_hurt"] if Game.hp <= 3 else Game.icons["face"]
+	hp_bar.queue_redraw()
+	build_label.visible = Game.build_mode
+
 	for i in Game.SLOTS:
 		var slot = Game.inventory[i]
 		slots[i].icon = Game.icons[slot["id"]] if slot != null else null
@@ -259,28 +356,22 @@ func refresh() -> void:
 	coins_label.text = " %d" % Game.money
 	var lines := PackedStringArray()
 	for s in Game.STAT_ORDER:
-		lines.append("%-9s %d" % [s.capitalize(), Game.stat_level(s)])
+		lines.append("%s   %d" % [s.capitalize(), Game.stat_level(s)])
 	stats_label.text = "\n".join(lines)
 
-	hud_left.text = "HP %d/%d    Coins %d" % [Game.hp, Game.MAX_HP, Game.money]
-	if Game.build_mode:
-		hud_hint.text = "BUILD MODE   LMB place   RMB remove   B exit"
-	else:
-		hud_hint.text = "WASD move  LMB stick  RMB spell  Q spells  E inventory  F water  B build"
-
-	var sp: Dictionary = Game.SPELLS[Game.active_spell]
-	spell_icon.texture = Game.icons[Game.active_spell]
-	spell_label.text = "%s  [%s]" % [sp["name"], Game.cost_text(Game.active_spell)]
-	spell_label.add_theme_color_override("font_color",
-		Color.WHITE if Game.can_cast(Game.active_spell) else Color(1, 0.5, 0.5))
-
-	var book := PackedStringArray(["SPELLBOOK", ""])
+	var book := PackedStringArray(["SPELLBOOK"])
 	for id in Game.SPELL_ORDER:
 		var s: Dictionary = Game.SPELLS[id]
+		book.append("")
 		book.append("%s   Lv %d   (cast %d times)" % [s["name"], Game.spell_level(id), Game.spell_casts[id]])
 		book.append("   Damage %.2f    Cost: %s" % [Game.spell_damage(id), Game.cost_text(id)])
 		book.append("   " + s["info"])
-		book.append("")
+		if Game.spell_upgrade[id] == "":
+			book.append("   Upgrade unlocks at %d enemy hits: %d/%d" % [Game.UPGRADE_HITS,
+				mini(Game.spell_hits[id], Game.UPGRADE_HITS), Game.UPGRADE_HITS])
+		else:
+			book.append("   Upgrade: " + Game.upgrade_name(id))
+	book.append("")
 	book.append("(click to close)")
 	book_label.text = "\n".join(book)
 
