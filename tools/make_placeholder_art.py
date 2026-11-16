@@ -852,6 +852,44 @@ def make_boss():
     save(sheet, "sprites", "boss_heart.png")
 
 
+def make_big_mountain():
+    """One very big front mountain with the cave opening at its base.
+    Foot point (cave floor, bottom centre) at (100, 154)."""
+    W, H = 200, 164
+    rng = random.Random(11)
+    img = Image.new("RGBA", (W, H)); d = ImageDraw.Draw(img)
+    L, R, D = c("8e877e"), c("605a53"), c("4a4640")
+    # side peak (behind, left)
+    d.polygon([(4, 132), (48, 34), (86, 120)], fill=c("7a746c"))
+    d.polygon([(48, 34), (86, 120), (60, 136)], fill=c("57524c"))
+    # main peak
+    base_l, base_r, front, apex = (2, 136), (197, 132), (100, 156), (104, 4)
+    d.polygon([base_l, apex, front], fill=L)
+    d.polygon([apex, base_r, front], fill=R)
+    # snow caps
+    d.polygon([(104, 4), (84, 44), (92, 40), (98, 48), (104, 40), (112, 50), (120, 42), (128, 46)], fill=c("eef2f8"))
+    d.polygon([(104, 4), (128, 46), (120, 42), (112, 50), (104, 40)], fill=c("c8d0dc"))
+    d.polygon([(48, 34), (38, 56), (46, 52), (52, 58), (60, 52)], fill=c("eef2f8"))
+    # ridges and cracks (inside the rock only)
+    for _ in range(26):
+        x, y = rng.randint(12, 188), rng.randint(40, 140)
+        x2, y2 = x + rng.randint(-8, 8), y + rng.randint(3, 9)
+        if img.getpixel((x, y))[3] and img.getpixel((max(0, min(W - 1, x2)), min(H - 1, y2)))[3]:
+            d.line((x, y, x2, y2), fill=D)
+    d.line((104, 4, 100, 156), fill=c("6e6860"))
+    # cave opening with a stone arch frame
+    d.ellipse((74, 108, 126, 176), fill=c("5a554e"))
+    d.ellipse((80, 114, 120, 176), fill=c("0c0810"))
+    for a in range(9):
+        import math
+        ang = math.pi + a / 8 * math.pi
+        x, y = 100 + math.cos(ang) * 24, 142 + math.sin(ang) * 30
+        d.ellipse((x - 4, y - 3, x + 4, y + 3), fill=c("9a948a") if a % 2 else c("7a746c"))
+    img = img.crop((0, 0, W, 158))
+    add_outline(img)
+    save(shadow(img, 100, 150, 90, 8), "sprites", "mountain_big.png")
+
+
 if __name__ == "__main__":
     make_terrain()
     make_tree()
@@ -869,4 +907,5 @@ if __name__ == "__main__":
     make_tools_and_materials()
     make_village()
     make_mountain()
+    make_big_mountain()
     make_boss()

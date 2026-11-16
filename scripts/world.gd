@@ -7,7 +7,8 @@ const TILE_H := 16
 const MAP_SIZE := 160
 const VILLAGE_CLEAR := 8.0          # radius (cells) kept free of water and props
 const PLAZA := 3.5                  # radius of the dirt plaza around the fire
-const MOUNTAIN_R := 11              # mountain radius in cells
+const MOUNTAIN_R := 9               # mountain radius in cells
+const MOUNTAIN_PEAKS := 6           # small peaks behind the big front mountain
 const CAVE_REGION := 44             # cells x,y < this: sealed rock with the boss arena
 const ARENA := Vector2i(22, 22)     # arena centre (inside the sealed region)
 const ARENA_R := 9.0
@@ -27,6 +28,7 @@ const TEX := {
 	"boulder": preload("res://assets/sprites/boulder.png"),
 	"cave_mouth": preload("res://assets/sprites/cave_mouth.png"),
 	"cave_exit": preload("res://assets/sprites/cave_exit.png"),
+	"mountain_big": preload("res://assets/sprites/mountain_big.png"),
 }
 # Sprite offsets so that the image's "foot point" sits on the cell centre.
 const FOOT := {
@@ -41,6 +43,7 @@ const FOOT := {
 	"boulder": Vector2(-16, -24),
 	"cave_mouth": Vector2(-20, -30),
 	"cave_exit": Vector2(-20, -30),
+	"mountain_big": Vector2(-100, -154),
 }
 const HARVEST := {   # prop -> [tool needed, item, min, max]
 	"tree": ["axe", "wood", 2, 4],
@@ -218,6 +221,7 @@ func _generate() -> void:
 
 	_carve_tunnels()
 	_build_village()
+	_ensure_cave_path()
 
 
 func _pick_landmarks() -> void:
@@ -252,18 +256,92 @@ func _carve_tunnels() -> void:
 	while terrain_at(mountain + Vector2i(k + 1, k + 1)) == T.ROCK:
 		k += 1
 	cave_entrance = mountain + Vector2i(k, k)
+	# the big front mountain sprite stands on these cells: make them rock
+	for j in range(0, 6):
+		for side in range(-3, 4):
+			var c: Vector2i = cave_entrance + Vector2i(side - j, -side - j)
+			if in_bounds(c) and c != cave_entrance:
+				_set_terrain(c, T.ROCK)   # (all behind the mouth, never in front)
 	_set_terrain(cave_entrance, T.CAVE)
-	# clear path in front of the mouth
-	for j in range(1, 5):
+	# clear approach in front of the mouth (cuts through any rock in the way)
+	for j in range(0, 5):
 		for off in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1)]:
 			var c: Vector2i = cave_entrance + Vector2i(j, j) + off
-			if in_bounds(c) and terrain_at(c) != T.ROCK:
+			if in_bounds(c) and c != cave_entrance:
 				_set_terrain(c, T.DIRT)
 	mountain_exit = cave_entrance + Vector2i(2, 2)
 	# arena exit tunnel, 2 cells wide
 	for j in range(0, 12):
 		for off in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1)]:
 			_set_terrain(ARENA + Vector2i(j, j) + off, T.CAVE)
+
+
+func _path_cost(c: Vector2i) -> int:
+	## Cost for the reachability search; -1 = impassable.
+	var t := terrain_at(c)
+	if t == T.ROCK:
+		return -1
+	if props.has(c):
+		return -1 if props[c]["type"] in ["hut", "block", "fireplace"] else 4
+	return 12 if t == T.WATER else 1
+
+
+func _ensure_cave_path() -> void:
+	## Cheapest route from the village to the cave (Dial's algorithm). Water
+	## on the route becomes a dirt ford, trees/rocks/bushes on it are removed,
+	## so the cave can always be reached on foot.
+	var n := MAP_SIZE * MAP_SIZE
+	var dist := PackedInt32Array()
+	dist.resize(n)
+	dist.fill(1 << 30)
+	var parent := PackedInt32Array()
+	parent.resize(n)
+	parent.fill(-1)
+	var start := village + Vector2i(1, 2)
+	var si := start.y * MAP_SIZE + start.x
+	var gi := mountain_exit.y * MAP_SIZE + mountain_exit.x
+	var buckets := {0: [si]}
+	dist[si] = 0
+	var cur := 0
+	var max_cost := 0
+	var found := false
+	while cur <= max_cost and not found:
+		if buckets.has(cur):
+			for idx in buckets[cur]:
+				if dist[idx] != cur:
+					continue
+				if idx == gi:
+					found = true
+					break
+				var cell := Vector2i(idx % MAP_SIZE, idx / MAP_SIZE)
+				for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+					var nc: Vector2i = cell + d
+					if not in_bounds(nc):
+						continue
+					var step := _path_cost(nc)
+					if step < 0:
+						continue
+					var ni := nc.y * MAP_SIZE + nc.x
+					if cur + step < dist[ni]:
+						dist[ni] = cur + step
+						parent[ni] = idx
+						if not buckets.has(cur + step):
+							buckets[cur + step] = []
+						buckets[cur + step].append(ni)
+						max_cost = maxi(max_cost, cur + step)
+			buckets.erase(cur)
+		cur += 1
+	if not found:
+		push_warning("No route to the cave found")
+		return
+	var idx := gi
+	while idx != -1:
+		var c := Vector2i(idx % MAP_SIZE, idx / MAP_SIZE)
+		if terrain_at(c) == T.WATER:
+			terrain[idx] = T.DIRT
+		if props.has(c):
+			props.erase(c)
+		idx = parent[idx]
 
 
 func _build_village() -> void:
@@ -335,31 +413,41 @@ func _near_cave_floor(cell: Vector2i, dist: int) -> bool:
 
 
 func _build_mountain_decor() -> void:
-	## Peaks and boulders on rock cells so the rock looks like a mountain.
-	## Inside the cave only the back wall stays visible.
+	## Overworld mountain: one very big front mountain (with the cave) and a
+	## handful of peaks behind it. The sealed cave region keeps its rock wall
+	## of peaks; inside the cave only the back wall stays visible.
 	var arena_depth := ARENA.x + ARENA.y
-	for y in range(0, MAP_SIZE, 2):
-		for x in range(0, MAP_SIZE, 2):
+	for y in range(0, CAVE_REGION, 2):
+		for x in range(0, CAVE_REGION, 2):
 			var cell := Vector2i(x + (y / 2) % 2, y)
 			if not in_bounds(cell) or terrain_at(cell) != T.ROCK:
 				continue
 			var pos := cell_center(cell) + Vector2(rng.randf_range(-4, 4), rng.randf_range(-2, 2))
-			var in_region := cell.x < CAVE_REGION and cell.y < CAVE_REGION
 			if _near_cave_floor(cell, 1):
-				# rim around tunnels / arena: small boulders, back wall kept in the cave
-				if in_region and cell.x + cell.y < arena_depth:
+				if cell.x + cell.y < arena_depth:
 					_decor("boulder", pos, true)
 				continue
-			var d := Vector2(cell).distance_to(Vector2(mountain))
-			var type := "peak"
-			if in_region:
-				type = "peak_big" if Vector2(cell).distance_to(Vector2(ARENA)) > ARENA_R + 8 else "peak"
-			elif d < MOUNTAIN_R * 0.45:
-				type = "peak_big"
-			elif d > MOUNTAIN_R * 0.8:
-				type = "boulder"
-			_decor(type, pos, in_region and cell.x + cell.y < arena_depth - 4)
-	_decor("cave_mouth", cell_center(cave_entrance) + Vector2(0, 4))
+			var type := "peak_big" if Vector2(cell).distance_to(Vector2(ARENA)) > ARENA_R + 8 else "peak"
+			_decor(type, pos, cell.x + cell.y < arena_depth - 4)
+
+	# handful of peaks behind the big mountain, spread apart
+	var front_depth := cave_entrance.x + cave_entrance.y
+	var spots := []
+	for dy in range(-MOUNTAIN_R, MOUNTAIN_R + 1):
+		for dx in range(-MOUNTAIN_R, MOUNTAIN_R + 1):
+			var c := mountain + Vector2i(dx, dy)
+			if in_bounds(c) and terrain_at(c) == T.ROCK and c.x + c.y < front_depth - 5:
+				spots.append(c)
+	spots.shuffle()
+	var placed := []
+	for c in spots:
+		if placed.size() >= MOUNTAIN_PEAKS:
+			break
+		if placed.any(func(p): return Vector2(p).distance_to(Vector2(c)) < 4.0):
+			continue
+		placed.append(c)
+		_decor("peak_big" if placed.size() % 2 == 1 else "peak", cell_center(c))
+	_decor("mountain_big", cell_center(cave_entrance) + Vector2(0, 4))
 	_decor("cave_exit", cell_center(cave_exit) + Vector2(0, 4), true)
 
 
