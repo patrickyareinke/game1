@@ -54,6 +54,9 @@ CELL_W, CELL_H = 40, 20
 GRASS = [c("3f7d2b"), c("4e9632"), c("5fad3b"), c("7cc84a")]
 DIRT = [c("6b4f2c"), c("86653a"), c("9e7c4a"), c("b8955e")]
 WATER = [c("23548a"), c("2d68a6"), c("3a7fc0"), c("9fd2ee")]
+ROCK = [c("54504c"), c("6c6862"), c("85807a"), c("a29c94")]
+CAVE = [c("3e3640"), c("4c4450"), c("5a5060"), c("766a78")]
+CAVE_WALL = [c("0c0a10"), c("15111a"), c("1e1924"), c("2a2332")]
 
 
 def in_diamond(x, y):
@@ -80,6 +83,25 @@ def blobs(px, mask, rng, color, count, size):
             bx += rng.choice((-1, 0, 1))
             by += rng.choice((-1, 0, 0, 1))
             bx, by = max(0, min(CELL_W - 1, bx)), max(0, min(CELL_H - 1, by))
+
+
+def stone_tile(rng, pal):
+    """Opaque diamond like grass, but rocky (mountain) or dark (cave floor)."""
+    img = Image.new("RGBA", (CELL_W, CELL_H))
+    px = img.load()
+    m = in_diamond
+    for y in range(CELL_H):
+        for x in range(CELL_W):
+            if m(x, y):
+                px[x, y] = pal[1]
+    blobs(px, m, rng, pal[0], 7, 6)
+    blobs(px, m, rng, pal[2], 6, 5)
+    for _ in range(5):
+        x, y = rng.randrange(6, 34), rng.randrange(3, 16)
+        if m(x, y) and m(x + 1, y):
+            px[x, y] = pal[3]
+            px[x + 1, y] = pal[2]
+    return img
 
 
 def grass_tile(rng, flowers=False):
@@ -140,11 +162,14 @@ def overlay_tile(rng, pal, kind):
 
 def make_terrain():
     rng = random.Random(7)
-    atlas = Image.new("RGBA", (CELL_W * 10, CELL_H))
+    atlas = Image.new("RGBA", (CELL_W * 16, CELL_H))
     tiles = [grass_tile(rng) for _ in range(4)]
     tiles += [grass_tile(rng, flowers=True) for _ in range(2)]
     tiles += [overlay_tile(rng, DIRT, "dirt") for _ in range(2)]
     tiles += [overlay_tile(rng, WATER, "water") for _ in range(2)]
+    tiles += [stone_tile(rng, ROCK) for _ in range(2)]
+    tiles += [stone_tile(rng, CAVE) for _ in range(2)]
+    tiles += [stone_tile(rng, CAVE_WALL) for _ in range(2)]
     for i, t in enumerate(tiles):
         atlas.paste(t, (i * CELL_W, 0))
     save(atlas, "tiles", "terrain.png")
@@ -709,6 +734,124 @@ def make_village():
     save(sheet, "sprites", "fireplace.png")
 
 
+def make_mountain():
+    """Mountain decoration (peaks, boulders) and cave mouths."""
+    import math
+    def peak(w, h, snow, name, seed):
+        rng = random.Random(seed)
+        img = Image.new("RGBA", (w, h)); d = ImageDraw.Draw(img)
+        cx, base = w // 2, h - 4
+        apex = (cx + rng.randint(-3, 3), 2)
+        left, right, front = (2, base - 6), (w - 3, base - 6), (cx, base)
+        d.polygon([left, front, apex], fill=c("8a847c"))
+        d.polygon([front, right, apex], fill=c("5e5a54"))
+        for _ in range(8):  # cracks / ledges, only inside the rock
+            y = rng.randint(apex[1] + 6, base - 6)
+            x = rng.randint(6, w - 7)
+            x2 = x + rng.randint(3, 7)
+            if img.getpixel((x, y))[3] and img.getpixel((min(x2, w - 1), min(y + 2, h - 1)))[3]:
+                d.line((x, y, x2, y + 2), fill=c("4a4640"))
+        if snow:
+            sh = h // 3
+            d.polygon([(apex[0] - sh // 2, apex[1] + sh), (apex[0], apex[1]), (apex[0] + sh // 2, apex[1] + sh),
+                       (apex[0] + 2, apex[1] + sh - 3), (apex[0] - 3, apex[1] + sh - 2)], fill=c("eef2f8"))
+        add_outline(img)
+        save(shadow(img, cx, base - 2, w // 2 - 4, 4), "sprites", name)
+    peak(72, 70, True, "peak_big.png", 1)
+    peak(50, 48, False, "peak.png", 2)
+    peak(32, 28, False, "boulder.png", 3)
+
+    for name, inner in (("cave_mouth.png", c("0c0810")), ("cave_exit.png", c("f8e8b0"))):
+        img = Image.new("RGBA", (40, 34)); d = ImageDraw.Draw(img)
+        d.polygon([(2, 31), (6, 10), (14, 3), (26, 3), (34, 10), (38, 31)], fill=c("6c6862"))
+        d.polygon([(2, 31), (6, 10), (14, 3), (20, 3), (20, 31)], fill=c("85807a"))
+        d.ellipse((9, 9, 31, 40), fill=inner)
+        if name == "cave_exit.png":
+            d.ellipse((13, 14, 27, 40), fill=c("fffbe8"))
+        add_outline(img)
+        img = img.crop((0, 0, 40, 33))
+        save(img, "sprites", name)
+
+
+def make_boss():
+    """Hive Mantis: body, claw cage (closed / open), heart (2 frames)."""
+    CH, CH_L, CH_D = c("4a2a5e"), c("6e3e8a"), c("2a163a")
+    STRIPE, EYE = c("8a5aa8"), c("f03a2a")
+    BONE, BONE_D = c("e0d4b0"), c("8a7a5a")
+    W, H = 128, 100
+    img = Image.new("RGBA", (W, H)); d = ImageDraw.Draw(img)
+    cx = W // 2
+    # legs (behind)
+    for side in (-1, 1):
+        for i, (kx, ky, fx) in enumerate(((30, 50, 46), (34, 62, 52), (28, 74, 44))):
+            knee = (cx + side * kx, ky - 8)
+            foot = (cx + side * fx, ky + 18)
+            d.line((cx + side * 12, ky, knee[0], knee[1]), fill=CH_D, width=3)
+            d.line((knee[0], knee[1], foot[0], foot[1]), fill=CH_D, width=2)
+    # abdomen (behind, higher)
+    d.ellipse((cx - 30, 4, cx + 30, 52), fill=CH)
+    for y in (14, 24, 34, 44):
+        d.arc((cx - 30, y - 18, cx + 30, y + 10), 20, 160, fill=STRIPE, width=2)
+    d.ellipse((cx - 20, 8, cx - 4, 22), fill=CH_L)
+    # thorax
+    d.ellipse((cx - 24, 34, cx + 24, 86), fill=CH)
+    d.ellipse((cx - 20, 38, cx + 4, 60), fill=CH_L)
+    d.ellipse((cx - 10, 50, cx + 10, 72), fill=c("1a0c22"))  # heart cavity
+    # head
+    d.polygon([(cx - 16, 34), (cx + 16, 34), (cx, 54)], fill=CH)
+    d.polygon([(cx - 16, 34), (cx, 34), (cx, 54)], fill=CH_L)
+    d.ellipse((cx - 17, 28, cx - 7, 38), fill=EYE)
+    d.ellipse((cx + 7, 28, cx + 17, 38), fill=EYE)
+    d.point([(cx - 14, 30), (cx + 10, 30)], fill=c("ffd0c0"))
+    d.line((cx - 4, 52, cx - 7, 58), fill=BONE, width=2)
+    d.line((cx + 4, 52, cx + 7, 58), fill=BONE, width=2)
+    # antennae
+    d.line((cx - 6, 30, cx - 24, 2), fill=CH_D, width=1)
+    d.line((cx + 6, 30, cx + 24, 2), fill=CH_D, width=1)
+    add_outline(img)
+    save(shadow(img, cx, 90, 50, 8), "sprites", "boss_body.png")
+
+    # claw cage, closed: two scythe claws crossing over the heart (center 32,26)
+    img = Image.new("RGBA", (64, 52)); d = ImageDraw.Draw(img)
+    for side in (-1, 1):
+        x0 = 32 + side * 26
+        d.line((x0, 4, 32 + side * 20, 20), fill=CH, width=5)              # upper arm
+        d.arc((32 - 22 if side > 0 else 32 - 4, 8, 32 + 4 if side > 0 else 32 + 22, 48),
+              90 if side > 0 else 270, 270 if side > 0 else 90, fill=BONE, width=4)
+        for k in range(4):  # spikes pointing inward
+            y = 16 + k * 8
+            d.line((32 + side * 12, y, 32 + side * 4, y + 3), fill=BONE_D, width=2)
+    d.line((14, 28, 50, 28), fill=BONE, width=2)
+    d.line((18, 38, 46, 38), fill=BONE, width=2)
+    add_outline(img)
+    save(img, "sprites", "boss_cage.png")
+
+    # claw cage, open: claws pulled wide apart
+    img = Image.new("RGBA", (112, 52)); d = ImageDraw.Draw(img)
+    for side in (-1, 1):
+        sx = 56 + side * 30
+        d.line((56 + side * 16, 10, sx, 4), fill=CH, width=5)
+        d.arc((sx - 14, 2, sx + 14, 46), 300 if side > 0 else 120, 60 if side > 0 else 240, fill=BONE, width=4)
+        for k in range(3):
+            y = 14 + k * 9
+            d.line((sx + side * 10, y, sx + side * 16, y + 3), fill=BONE_D, width=2)
+    add_outline(img)
+    save(img, "sprites", "boss_cage_open.png")
+
+    # heart: 2 frames of 20x20
+    sheet = Image.new("RGBA", (40, 20))
+    for f, r in enumerate((7, 8)):
+        img = Image.new("RGBA", (20, 20)); d = ImageDraw.Draw(img)
+        d.ellipse((10 - r, 10 - r, 10 + r, 10 + r), fill=c("b0142a"))
+        d.ellipse((10 - r + 2, 10 - r + 2, 10 + r - 3, 10 + r - 3), fill=c("e8304a"))
+        d.ellipse((6, 5, 9, 8), fill=c("ffa0b0"))
+        d.line((10, 3, 12, 14), fill=c("7a0a1a"))
+        d.line((5, 10, 15, 12), fill=c("7a0a1a"))
+        add_outline(img)
+        sheet.paste(img, (f * 20, 0))
+    save(sheet, "sprites", "boss_heart.png")
+
+
 if __name__ == "__main__":
     make_terrain()
     make_tree()
@@ -725,3 +868,5 @@ if __name__ == "__main__":
     make_upgrade_icons()
     make_tools_and_materials()
     make_village()
+    make_mountain()
+    make_boss()

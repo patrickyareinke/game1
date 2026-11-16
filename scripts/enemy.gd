@@ -18,6 +18,7 @@ var speed_base := 30.0
 var slow_t := 0.0
 var root_t := 0.0
 var dead := false
+var hit_radius := 0.0        # extra hit size (big enemies use more)
 var hurt_t := 0.0
 var knock := Vector2.ZERO
 var wander_dir := Vector2.ZERO

@@ -28,6 +28,16 @@ Every game generates a new random 160x160 world. Somewhere on it is a village (f
 | Axe | trees -> 2-4 Wood (3 hits) | 1.3x |
 | Pickaxe | rocks -> 2-3 Stone (3 hits) | 1.1x |
 
+## The mountain & the Hive Mantis
+
+Somewhere on the map is a big mountain with a cave mouth on its front side. Walk in to enter the boss cave (walk onto the glowing exit to leave).
+
+The **Hive Mantis** guards its heart with a claw cage:
+1. **Burst the cage**: only *Magic Fiststamp* hurts it - 3 fist hits break it open (fireballs and the stick just bounce off).
+2. **Burn the heart**: only *fireballs* damage the exposed heart (30 HP). After 12 s the claws close again.
+
+It spits acid at you and slams its claws where a red circle appears. If you faint, you wake up at the village fire and the boss heals. Reward: 100 coins.
+
 ## Stats & spells
 
 All stats start at 1 and are shown as whole numbers.
@@ -81,6 +91,9 @@ scripts/enemy.gd           slime enemy
 scripts/projectile.gd      fireball / mudball
 scripts/fx.gd              impact ring effect
 scripts/zone.gd            lava / mud puddle / quake ground effects
+scripts/boss.gd            Hive Mantis end boss
+scripts/boss_spit.gd       boss acid spit
+scripts/warning.gd         red warning circle (boss claw slam)
 assets/icons/*.png         16x16 item and spell icons
 assets/tiles/terrain.png   terrain atlas, 10 cells of 40x20
 assets/sprites/*.png       player, slimes, tree, bush, rock, crate, stick
@@ -94,7 +107,7 @@ Draw your own PNGs with the same size and layout and overwrite the files:
 | File | Size | Layout |
 |---|---|---|
 | `assets/sprites/player.png` | 72x104 | 4x4 frames of 18x26. Rows: down, up, left, right. Columns: walk cycle. Feet at (9, 24) in each frame |
-| `assets/tiles/terrain.png` | 400x20 | 10 cells of 40x20, iso diamond 32x16 at offset (4,2). 0-3 grass, 4-5 grass+flowers, 6-7 dirt, 8-9 water |
+| `assets/tiles/terrain.png` | 640x20 | 16 cells of 40x20, iso diamond 32x16 at offset (4,2). 0-3 grass, 4-5 grass+flowers, 6-7 dirt, 8-9 water, 10-11 mountain rock, 12-13 cave floor, 14-15 cave wall |
 | `assets/sprites/tree.png` | 34x46 | trunk base at (17, 42) |
 | `assets/sprites/bush.png`, `rock.png`, `crate.png`, `stick.png` | see `FOOT` in world.gd | |
 
@@ -105,6 +118,7 @@ Draw your own PNGs with the same size and layout and overwrite the files:
 - [x] Generated level: grass, paths, ponds, trees, rocks, bushes
 - [x] Inventory, stats, spells, slime enemies
 - [x] Random world with village, axe/pickaxe harvesting
+- [x] Mountain cave with the Hive Mantis end boss
 - [ ] Building types with resource costs (wood, stone)
 - [ ] Resource tick (wood, stone, food)
 - [ ] Day/night + threats

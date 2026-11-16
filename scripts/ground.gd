@@ -44,7 +44,14 @@ func _draw() -> void:
 		for x in n:
 			var c := Vector2i(x, y)
 			var v: int = world.variant_at(c)
-			_tile(c, 4 + v % 2 if v < 8 else v % 4)
+			var t: int = world.terrain_at(c)
+			if t == world.T.ROCK:
+				var cave_wall: bool = x < world.CAVE_REGION and y < world.CAVE_REGION
+				_tile(c, (14 if cave_wall else 10) + v % 2)
+			elif t == world.T.CAVE:
+				_tile(c, 12 + v % 2)
+			else:
+				_tile(c, 4 + v % 2 if v < 8 else v % 4)
 	# 2) dirt paths, 3) water
 	for kind in [world.T.DIRT, world.T.WATER]:
 		var base := 6 if kind == world.T.DIRT else 8

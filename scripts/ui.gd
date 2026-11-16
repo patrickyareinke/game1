@@ -19,6 +19,8 @@ var tool_icon: TextureRect
 var slot_normal: StyleBoxFlat
 var slot_equipped: StyleBoxFlat
 var build_label: Label
+var boss_box: Control
+var boss_status: Label
 var inv_panel: PanelContainer
 var slots: Array[Button] = []
 var slot_counts: Array[Label] = []
@@ -97,6 +99,21 @@ func _build_hud() -> void:
 	tool_icon.position = Vector2(SCREEN.x / 2.0 - 62.0, SCREEN.y - 20.0)
 	add_child(tool_icon)
 
+	boss_box = Control.new()
+	boss_box.position = Vector2(SCREEN.x / 2.0 - 90.0, 4)
+	boss_box.size = Vector2(180, 34)
+	boss_box.draw.connect(_draw_boss_bar)
+	add_child(boss_box)
+	var boss_name := _label("HIVE MANTIS", Color(0.85, 0.6, 1.0))
+	boss_name.size = Vector2(180, 12)
+	boss_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	boss_box.add_child(boss_name)
+	boss_status = _label()
+	boss_status.position = Vector2(0, 21)
+	boss_status.size = Vector2(180, 12)
+	boss_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	boss_box.add_child(boss_status)
+
 	build_label = _label("BUILD MODE  (B to exit)", GOLD)
 	build_label.position = Vector2(4, 2)
 	add_child(build_label)
@@ -113,6 +130,17 @@ func _draw_hp() -> void:
 	for i in range(1, Game.MAX_HP):
 		var x := 1.0 + (w - 2.0) * i / Game.MAX_HP
 		hp_bar.draw_line(Vector2(x, 1), Vector2(x, h - 1), Color(0, 0, 0, 0.35))
+
+
+func _draw_boss_bar() -> void:
+	if Game.boss.is_empty():
+		return
+	var r := Rect2(0, 13, boss_box.size.x, 7)
+	var frac: float = Game.boss["heart"] / Game.boss["max"]
+	boss_box.draw_rect(r, Color("1a1220"))
+	boss_box.draw_rect(Rect2(r.position + Vector2(1, 1), Vector2(r.size.x - 2, 5)), Color("3a1030"))
+	boss_box.draw_rect(Rect2(r.position + Vector2(1, 1), Vector2((r.size.x - 2) * frac, 5)), Color("c0203a"))
+	boss_box.draw_rect(Rect2(r.position + Vector2(1, 1), Vector2((r.size.x - 2) * frac, 2)), Color("f06a80"))
 
 
 # --- inventory -------------------------------------------------------------
@@ -371,6 +399,15 @@ func refresh() -> void:
 	face.texture = Game.icons["face_hurt"] if Game.hp <= 3 else Game.icons["face"]
 	hp_bar.queue_redraw()
 	build_label.visible = Game.build_mode
+	boss_box.visible = Game.boss.get("visible", false)
+	if boss_box.visible:
+		if Game.boss["open"]:
+			boss_status.text = "Cage open! Burn the heart with fire!"
+			boss_status.add_theme_color_override("font_color", Color(1, 0.7, 0.4))
+		else:
+			boss_status.text = "Claw cage: %d/%d fist hits to burst it" % [Game.boss["cage_hits"], Game.boss["cage_needed"]]
+			boss_status.add_theme_color_override("font_color", Color.WHITE)
+		boss_box.queue_redraw()
 	tool_icon.texture = Game.icons[Game.equipped]
 
 	for i in Game.SLOTS:

@@ -56,12 +56,12 @@ func _physics_process(delta: float) -> void:
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if e in already_hit or e.dead:
 			continue
-		if e.position.distance_to(position) < HIT_RANGE * size:
+		if e.position.distance_to(position) < HIT_RANGE * size + e.hit_radius:
 			_hit_enemy(e)
 			return
 
 	var cell: Vector2i = world.screen_to_grid(position)
-	if not world.in_bounds(cell) or travelled > RANGE:
+	if not world.in_bounds(cell) or travelled > RANGE or world.terrain_at(cell) == world.T.ROCK:
 		_end()
 		return
 	if world.props.has(cell):

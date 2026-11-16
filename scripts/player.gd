@@ -27,6 +27,7 @@ var spawn_point := Vector2.ZERO
 
 var sprite: Sprite2D
 var stick: Sprite2D
+var cam: Camera2D
 
 
 func _ready() -> void:
@@ -49,7 +50,8 @@ func _ready() -> void:
 	stick.visible = false
 	add_child(stick)
 
-	add_child(Camera2D.new())
+	cam = Camera2D.new()
+	add_child(cam)
 
 
 func _draw() -> void:
@@ -87,11 +89,18 @@ func _physics_process(delta: float) -> void:
 	if cell != last_cell:
 		last_cell = cell
 		Game.add_stat("fitness", Game.FITNESS_PER_TILE)
-		world.check_hidden(cell)
+		world.on_player_cell(cell)
 
 	var f := int(walk_time * WALK_FPS) % 4 if moving else 0
 	sprite.frame = dir * 4 + f
 	_update_swing(delta)
+
+	# in the boss cave the camera leans towards the boss so both are on screen
+	var cam_target := Vector2.ZERO
+	if world.in_cave and world.boss and not world.boss.dead:
+		cam_target = ((world.boss.position + Vector2(0, -40)) - position) * 0.5
+		cam_target = cam_target.limit_length(110.0)
+	cam.offset = cam.offset.lerp(cam_target, minf(1.0, delta * 5.0))
 
 	for id in cooldowns:
 		cooldowns[id] = maxf(cooldowns[id] - delta, 0.0)
@@ -200,9 +209,8 @@ func hurt(amount: int, from: Vector2) -> void:
 	world.popup(position + Vector2(0, -34), "-%d" % amount, Color(1, 0.3, 0.3))
 	if Game.hp <= 0:
 		world.popup(position + Vector2(0, -44), "You fainted!", Color(1, 0.3, 0.3))
-		position = spawn_point
-		last_cell = world.screen_to_grid(position)
 		Game.set_hp(Game.MAX_HP)
+		world.respawn_player()
 
 
 func _dir_from(v: Vector2) -> Dir:

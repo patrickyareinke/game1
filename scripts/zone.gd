@@ -27,7 +27,7 @@ func _physics_process(delta: float) -> void:
 		tick = TICK
 	for e in get_tree().get_nodes_in_group("enemies"):
 		var d: Vector2 = e.position - position
-		if Vector2(d.x, d.y * 2.0).length() > radius:
+		if Vector2(d.x, d.y * 2.0).length() > radius + e.hit_radius:
 			continue
 		match kind:
 			"lava":

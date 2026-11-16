@@ -79,6 +79,8 @@ var active_spell := "fireball"
 var equipped := "stick"
 var ui_open := false         # inventory or spell ring visible -> no world clicks
 var build_mode := false
+var boss := {}               # boss bar info, written by boss.gd
+var boss_defeated := false
 
 
 func _ready() -> void:
@@ -104,6 +106,8 @@ func reset() -> void:
 	inventory.clear()
 	inventory.resize(SLOTS)
 	money = 0
+	boss = {}
+	boss_defeated = false
 	hp = MAX_HP
 	add_item("stick")
 	add_item("axe")
