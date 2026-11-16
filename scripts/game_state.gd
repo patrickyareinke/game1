@@ -14,7 +14,19 @@ const ITEMS := {
 	"oil": {"name": "Oil"},
 	"ash": {"name": "Ash"},
 	"water": {"name": "Water"},
+	"axe": {"name": "Axe"},
+	"pickaxe": {"name": "Pickaxe"},
+	"wood": {"name": "Wood"},
+	"stone": {"name": "Stone"},
 }
+
+# Tools you can hold. Only the axe chops trees, only the pickaxe breaks rocks.
+const TOOLS := {
+	"stick": {"held": "res://assets/sprites/stick.png", "pivot": Vector2(-1, -2), "damage": 1.0},
+	"axe": {"held": "res://assets/sprites/axe_held.png", "pivot": Vector2(-1, -4), "damage": 1.3},
+	"pickaxe": {"held": "res://assets/sprites/pickaxe_held.png", "pivot": Vector2(-1, -6), "damage": 1.1},
+}
+const TOOL_ORDER := ["stick", "axe", "pickaxe"]
 
 const SPELLS := {
 	"fireball": {"name": "Fireball", "cost": {"oil": 1, "ash": 1}, "damage": 3.0,
@@ -64,13 +76,15 @@ var inventory: Array = []    # SLOTS entries: null or {"id": String, "count": in
 var money := 0
 var hp := MAX_HP
 var active_spell := "fireball"
+var equipped := "stick"
 var ui_open := false         # inventory or spell ring visible -> no world clicks
 var build_mode := false
 
 
 func _ready() -> void:
 	for id in ["stick", "spellbook", "oil", "ash", "water", "coin",
-			"fireball", "mudball", "fiststamp", "slap", "face", "face_hurt"]:
+			"fireball", "mudball", "fiststamp", "slap", "face", "face_hurt",
+			"axe", "pickaxe", "wood", "stone"]:
 		icons[id] = load("res://assets/icons/%s.png" % id)
 	for spell in UPGRADES:
 		for u in UPGRADES[spell]:
@@ -92,6 +106,9 @@ func reset() -> void:
 	money = 0
 	hp = MAX_HP
 	add_item("stick")
+	add_item("axe")
+	add_item("pickaxe")
+	equipped = "stick"
 	add_item("spellbook")
 	add_item("oil", 20)
 	add_item("ash", 20)
@@ -200,7 +217,22 @@ func spell_damage(spell: String) -> float:
 
 
 func stick_damage() -> float:
-	return 1.0 * stats["fighter"]
+	## Melee damage of the equipped tool.
+	return TOOLS[equipped]["damage"] * stats["fighter"]
+
+
+func equip(tool: String) -> void:
+	if TOOLS.has(tool) and count_item(tool) > 0:
+		equipped = tool
+		changed.emit()
+
+
+func cycle_tool(step: int) -> void:
+	var owned := TOOL_ORDER.filter(func(t): return count_item(t) > 0)
+	if owned.is_empty():
+		return
+	var i := owned.find(equipped)
+	equip(owned[(i + step + owned.size()) % owned.size()])
 
 
 func register_spell_hit(spell: String) -> void:

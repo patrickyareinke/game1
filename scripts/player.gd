@@ -109,6 +109,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	var mb := event as InputEventMouseButton
 	if not (mb and mb.pressed) or Game.ui_open or Game.build_mode:
 		return
+	if mb.button_index == MOUSE_BUTTON_WHEEL_UP or mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+		Game.cycle_tool(1 if mb.button_index == MOUSE_BUTTON_WHEEL_DOWN else -1)
+		return
 	if mb.button_index == MOUSE_BUTTON_LEFT and swing_t < 0.0:
 		_start_swing()
 	elif mb.button_index == MOUSE_BUTTON_RIGHT:
@@ -122,11 +125,14 @@ func _start_swing() -> void:
 	swing_angle = aim.angle()
 	dir = _dir_from(aim)
 	swing_t = 0.0
+	var tool: Dictionary = Game.TOOLS[Game.equipped]
+	stick.texture = load(tool["held"])
+	stick.offset = tool["pivot"]
 	stick.visible = true
 	# stick goes behind the body when swinging away from the camera
 	move_child(stick, 0 if dir == Dir.UP else sprite.get_index() + 1)
 	_update_swing(0.0)
-	world.hit_at(position + Vector2.from_angle(swing_angle) * REACH)
+	world.hit_at(position + Vector2.from_angle(swing_angle) * REACH, Game.equipped)
 
 
 func _update_swing(delta: float) -> void:

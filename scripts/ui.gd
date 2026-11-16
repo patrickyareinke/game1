@@ -15,6 +15,9 @@ const SCREEN := Vector2(480, 270)
 
 var face: TextureRect
 var hp_bar: Control
+var tool_icon: TextureRect
+var slot_normal: StyleBoxFlat
+var slot_equipped: StyleBoxFlat
 var build_label: Label
 var inv_panel: PanelContainer
 var slots: Array[Button] = []
@@ -90,6 +93,10 @@ func _build_hud() -> void:
 	hp_bar.draw.connect(_draw_hp)
 	add_child(hp_bar)
 
+	tool_icon = TextureRect.new()
+	tool_icon.position = Vector2(SCREEN.x / 2.0 - 62.0, SCREEN.y - 20.0)
+	add_child(tool_icon)
+
 	build_label = _label("BUILD MODE  (B to exit)", GOLD)
 	build_label.position = Vector2(4, 2)
 	add_child(build_label)
@@ -131,6 +138,9 @@ func _build_inventory() -> void:
 
 	var normal := _box(SLOT_BG, Color("5a6ab0"), 1)
 	var hover := _box(SLOT_HOVER, GOLD, 1)
+	slot_normal = normal
+	slot_equipped = _box(Color("4a3a10"), GOLD, 1)
+	slot_equipped.set_border_width_all(2)
 	for i in Game.SLOTS:
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(SLOT, SLOT)
@@ -163,7 +173,7 @@ func _build_inventory() -> void:
 	right.add_child(_label("STATS", GOLD))
 	stats_label = _label()
 	right.add_child(stats_label)
-	right.add_child(_label("\nClick the book\nto read spells", Color(1, 1, 1, 0.6)))
+	right.add_child(_label("\nClick a tool to hold it\nClick the book for spells", Color(1, 1, 1, 0.6)))
 
 
 func _build_book() -> void:
@@ -347,8 +357,12 @@ func _pick_spell(id: String) -> void:
 
 func _on_slot_pressed(i: int) -> void:
 	var slot = Game.inventory[i]
-	if slot != null and slot["id"] == "spellbook":
+	if slot == null:
+		return
+	if slot["id"] == "spellbook":
 		book_panel.visible = not book_panel.visible
+	elif Game.TOOLS.has(slot["id"]):
+		Game.equip(slot["id"])
 
 
 # --- refresh ---------------------------------------------------------------
@@ -357,11 +371,14 @@ func refresh() -> void:
 	face.texture = Game.icons["face_hurt"] if Game.hp <= 3 else Game.icons["face"]
 	hp_bar.queue_redraw()
 	build_label.visible = Game.build_mode
+	tool_icon.texture = Game.icons[Game.equipped]
 
 	for i in Game.SLOTS:
 		var slot = Game.inventory[i]
 		slots[i].icon = Game.icons[slot["id"]] if slot != null else null
 		slot_counts[i].text = str(slot["count"]) if slot != null and slot["count"] > 1 else ""
+		var is_equipped: bool = slot != null and slot["id"] == Game.equipped
+		slots[i].add_theme_stylebox_override("normal", slot_equipped if is_equipped else slot_normal)
 
 	coins_label.text = " %d" % Game.money
 	var lines := PackedStringArray()

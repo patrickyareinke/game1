@@ -5,7 +5,8 @@ extends Node2D
 const TILE_W := 32
 const TILE_H := 16
 const MAP_SIZE := 160
-const SEED := 1337
+const VILLAGE_CLEAR := 8.0          # radius (cells) kept free of water and props
+const PLAZA := 3.5                  # radius of the dirt plaza around the fire
 
 enum T { GRASS, DIRT, WATER }
 
@@ -14,6 +15,8 @@ const TEX := {
 	"bush": preload("res://assets/sprites/bush.png"),
 	"rock": preload("res://assets/sprites/rock.png"),
 	"crate": preload("res://assets/sprites/crate.png"),
+	"hut": preload("res://assets/sprites/hut.png"),
+	"fireplace": preload("res://assets/sprites/fireplace.png"),
 }
 # Sprite offsets so that the image's "foot point" sits on the cell centre.
 const FOOT := {
@@ -21,12 +24,23 @@ const FOOT := {
 	"bush": Vector2(-10, -14),
 	"rock": Vector2(-9, -11),
 	"crate": Vector2(-17, -25),
+	"hut": Vector2(-34, -44),        # hut covers 2x2 cells, see _build_village
+	"fireplace": Vector2(-12, -22),
 }
+const HARVEST := {   # prop -> [tool needed, item, min, max]
+	"tree": ["axe", "wood", 2, 4],
+	"rock": ["pickaxe", "stone", 2, 3],
+}
+const HITS_TO_HARVEST := 3
 
 var terrain := PackedByteArray()   # T per cell, index = y * MAP_SIZE + x
 var variant := PackedByteArray()   # random 0..99 per cell for tile variety
 var props := {}                    # Vector2i -> { "type": String, "node": Sprite2D }
 var stashes := {}                  # Vector2i -> { "id": String, "count": int } (invisible)
+var village := Vector2i.ZERO       # fireplace cell
+var fire: Sprite2D
+var anim_time := 0.0
+var hint_cooldown := 0.0
 
 const ENEMY_COUNT := 200
 const ENEMY_SCRIPT := preload("res://scripts/enemy.gd")
@@ -60,10 +74,9 @@ func _ready() -> void:
 
 	player = preload("res://scripts/player.gd").new()
 	player.world = self
-	player.position = cell_center(Vector2i(MAP_SIZE / 2, MAP_SIZE / 2))
+	player.position = cell_center(village + Vector2i(1, 2))
 	entities.add_child(player)
 
-	rng.randomize()
 	for i in ENEMY_COUNT:
 		_spawn_enemy()
 	var respawn := Timer.new()
@@ -118,35 +131,41 @@ func is_walkable_at(p: Vector2) -> bool:
 # --- generation ------------------------------------------------------------
 
 func _generate() -> void:
-	rng.seed = SEED
+	## New random world every game.
+	rng.randomize()
 	var n_water := FastNoiseLite.new()
-	n_water.seed = SEED
+	n_water.seed = rng.randi()
 	n_water.frequency = 0.07
 	var n_path := FastNoiseLite.new()
-	n_path.seed = SEED + 1
+	n_path.seed = rng.randi()
 	n_path.frequency = 0.035
 	var n_forest := FastNoiseLite.new()
-	n_forest.seed = SEED + 2
+	n_forest.seed = rng.randi()
 	n_forest.frequency = 0.09
 
 	terrain.resize(MAP_SIZE * MAP_SIZE)
 	variant.resize(MAP_SIZE * MAP_SIZE)
-	var start := Vector2(MAP_SIZE / 2, MAP_SIZE / 2)
+	var margin := 25
+	village = Vector2i(rng.randi_range(margin, MAP_SIZE - margin), rng.randi_range(margin, MAP_SIZE - margin))
+	var vc := Vector2(village)
 
 	for y in MAP_SIZE:
 		for x in MAP_SIZE:
 			var cell := Vector2i(x, y)
 			var i := y * MAP_SIZE + x
-			var near_start := Vector2(cell).distance_to(start) < 4.0
+			var d_village := Vector2(cell).distance_to(vc)
+			var near_village := d_village < VILLAGE_CLEAR
 			var t := T.GRASS
-			if n_water.get_noise_2d(x, y) < -0.28 and not near_start:
+			if d_village < PLAZA:
+				t = T.DIRT
+			elif n_water.get_noise_2d(x, y) < -0.28 and not near_village:
 				t = T.WATER
 			elif absf(n_path.get_noise_2d(x, y)) < 0.05:
 				t = T.DIRT
 			terrain[i] = t
 			variant[i] = rng.randi_range(0, 99)
 
-			if t != T.GRASS or near_start:
+			if t != T.GRASS or near_village:
 				continue
 			var forest := n_forest.get_noise_2d(x, y)
 			var r := rng.randf()
@@ -156,15 +175,47 @@ func _generate() -> void:
 				props[cell] = {"type": "rock"}
 			elif r < 0.07:
 				props[cell] = {"type": "bush"}
+	_build_village()
+
+
+func _build_village() -> void:
+	## Fireplace in the middle, 3-5 huts (2x2 cells each) in a ring around it.
+	props[village] = {"type": "fireplace"}
+	var huts := rng.randi_range(3, 5)
+	var start_angle := rng.randf() * TAU
+	for i in huts:
+		var a := start_angle + TAU * i / huts + rng.randf_range(-0.25, 0.25)
+		var dist := rng.randf_range(5.0, 6.5)
+		var anchor := village + Vector2i(roundi(cos(a) * dist) - 1, roundi(sin(a) * dist) - 1)
+		var cells := [anchor, anchor + Vector2i(1, 0), anchor + Vector2i(0, 1), anchor + Vector2i(1, 1)]
+		if cells.any(func(c): return props.has(c)):
+			continue
+		props[anchor] = {"type": "hut"}
+		for c in cells.slice(1):
+			props[c] = {"type": "block", "owner": anchor}   # invisible collision
+
+
+func _process(delta: float) -> void:
+	anim_time += delta
+	hint_cooldown = maxf(hint_cooldown - delta, 0.0)
+	if fire:
+		fire.frame = int(anim_time * 8.0) % 3
 
 
 func _spawn_prop_node(cell: Vector2i) -> void:
 	var type: String = props[cell]["type"]
+	if type == "block":
+		return
 	var s := Sprite2D.new()
 	s.texture = TEX[type]
 	s.centered = false
 	s.offset = FOOT[type]
 	s.position = cell_center(cell)
+	if type == "hut":
+		s.position += Vector2(0, TILE_H / 2.0)   # middle of the 2x2 footprint
+	elif type == "fireplace":
+		s.hframes = 3
+		fire = s
 	entities.add_child(s)
 	props[cell]["node"] = s
 
@@ -181,11 +232,10 @@ func _hide_ingredients() -> void:
 	## The neighbour decides what you find.
 	var found_near := {"tree": "oil", "rock": "ash", "bush": "ash"}
 	var candidates := []
-	var start := Vector2(MAP_SIZE / 2, MAP_SIZE / 2)
 	for y in MAP_SIZE:
 		for x in MAP_SIZE:
 			var cell := Vector2i(x, y)
-			if not is_walkable_cell(cell) or Vector2(cell).distance_to(start) < 5.0:
+			if not is_walkable_cell(cell) or Vector2(cell).distance_to(Vector2(village)) < VILLAGE_CLEAR:
 				continue
 			var item := ""
 			for dy in range(-1, 2):
@@ -222,10 +272,10 @@ func _spawn_enemy() -> void:
 	## Random free grass/dirt cell, not too close to the player.
 	for attempt in 50:
 		var cell := Vector2i(rng.randi_range(0, MAP_SIZE - 1), rng.randi_range(0, MAP_SIZE - 1))
-		if not is_walkable_cell(cell):
+		if not is_walkable_cell(cell) or Vector2(cell).distance_to(Vector2(village)) < 12.0:
 			continue
 		var pos := cell_center(cell)
-		var from: Vector2 = player.position if player else cell_center(Vector2i(MAP_SIZE / 2, MAP_SIZE / 2))
+		var from: Vector2 = player.position if player else cell_center(village)
 		if pos.distance_to(from) < 150.0:
 			continue
 		var e := ENEMY_SCRIPT.new()
@@ -249,8 +299,8 @@ func on_enemy_killed(enemy: Node2D) -> void:
 
 # --- combat & effects ------------------------------------------------------
 
-func hit_at(point: Vector2) -> void:
-	## Called by the player's stick swing (point is on the ground).
+func hit_at(point: Vector2, tool := "stick") -> void:
+	## Called by the player's swing (point is on the ground).
 	var hit_enemy := false
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if e.position.distance_to(point) < 14.0:
@@ -266,7 +316,7 @@ func hit_at(point: Vector2) -> void:
 	for dy in range(-1, 2):
 		for dx in range(-1, 2):
 			var cell := center + Vector2i(dx, dy)
-			if not props.has(cell):
+			if not props.has(cell) or props[cell]["type"] == "block":
 				continue
 			var d := cell_center(cell).distance_to(point)
 			if d < best_d:
@@ -274,16 +324,34 @@ func hit_at(point: Vector2) -> void:
 				best = cell
 	if best == Vector2i(-1, -1):
 		return
-	var node: Sprite2D = props[best]["node"]
-	match props[best]["type"]:
-		"bush":
+	var type: String = props[best]["type"]
+	if type == "bush":
+		_remove_prop(best)
+	elif HARVEST.has(type):
+		_shake(props[best]["node"])
+		var h: Array = HARVEST[type]
+		if tool != h[0]:
+			if hint_cooldown <= 0.0:
+				hint_cooldown = 1.5
+				popup(cell_center(best) + Vector2(0, -30), "Needs a %s" % Game.ITEMS[h[0]]["name"].to_lower(),
+					Color(1, 1, 1, 0.85))
+			return
+		props[best]["hp"] = props[best].get("hp", HITS_TO_HARVEST) - 1
+		if props[best]["hp"] <= 0:
+			var count := rng.randi_range(h[2], h[3])
+			Game.add_item(h[1], count)
+			popup(cell_center(best) + Vector2(0, -30), "+%d %s" % [count, Game.ITEMS[h[1]]["name"]],
+				Color(0.9, 0.8, 0.6))
+			ring_fx(cell_center(best), 14.0, Color(0.9, 0.8, 0.6))
 			_remove_prop(best)
-		_:
-			var tw := create_tween()
-			var x := node.position.x
-			tw.tween_property(node, "position:x", x + 1, 0.04)
-			tw.tween_property(node, "position:x", x - 1, 0.04)
-			tw.tween_property(node, "position:x", x, 0.04)
+
+
+func _shake(node: Node2D) -> void:
+	var tw := create_tween()
+	var x := node.position.x
+	tw.tween_property(node, "position:x", x + 1, 0.04)
+	tw.tween_property(node, "position:x", x - 1, 0.04)
+	tw.tween_property(node, "position:x", x, 0.04)
 
 
 func burn_bush(cell: Vector2i) -> void:

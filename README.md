@@ -15,7 +15,18 @@ Controls:
 - **Q**: spell ring (pick Fireball, Mudball or Magic Fiststamp; or press 1/2/3)
 - **E**: inventory (5x8) with coins and stats; click the spellbook to read your spells
 - **F**: collect water when standing next to a pond
+- **Mouse wheel**: switch tool (stick / axe / pickaxe), or click a tool in the inventory
 - **B**: toggle build mode (left click places a crate, right click removes it)
+
+## World, village & tools
+
+Every game generates a new random 160x160 world. Somewhere on it is a village (fireplace + 3-5 huts) where you start.
+
+| Tool | Harvests | Melee damage |
+|---|---|---|
+| Stick | bushes only | 1.0x |
+| Axe | trees -> 2-4 Wood (3 hits) | 1.3x |
+| Pickaxe | rocks -> 2-3 Stone (3 hits) | 1.1x |
 
 ## Stats & spells
 
@@ -93,7 +104,8 @@ Draw your own PNGs with the same size and layout and overwrite the files:
 - [x] Player with WASD movement and stick swing
 - [x] Generated level: grass, paths, ponds, trees, rocks, bushes
 - [x] Inventory, stats, spells, slime enemies
-- [ ] Building types with resource costs
+- [x] Random world with village, axe/pickaxe harvesting
+- [ ] Building types with resource costs (wood, stone)
 - [ ] Resource tick (wood, stone, food)
 - [ ] Day/night + threats
 - [ ] Save/load

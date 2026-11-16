@@ -614,6 +614,101 @@ def make_upgrade_icons():
     save(add_outline(img), "icons", "up_fast.png")
 
 
+def make_tools_and_materials():
+    WOOD_L, WOOD, WOOD_D = c("b07a44"), c("8a5a30"), c("5e3a1c")
+    STEEL_L, STEEL, STEEL_D = c("e0e4ec"), c("a8b0bc"), c("6a7280")
+    # inventory icons
+    img = icon(); d = ImageDraw.Draw(img)
+    d.line((3, 14, 11, 4), fill=WOOD, width=2)
+    d.polygon([(8, 2), (13, 1), (15, 5), (12, 8)], fill=STEEL)
+    d.line((13, 2, 15, 5), fill=STEEL_L)
+    save(add_outline(img), "icons", "axe.png")
+    img = icon(); d = ImageDraw.Draw(img)
+    d.line((4, 14, 10, 5), fill=WOOD, width=2)
+    d.arc((2, 1, 16, 12), 200, 340, fill=STEEL, width=2)
+    d.point([(4, 5), (14, 5)], fill=STEEL_D)
+    save(add_outline(img), "icons", "pickaxe.png")
+    img = icon(); d = ImageDraw.Draw(img)
+    for y in (4, 8):
+        d.rectangle((2, y, 13, y + 3), fill=WOOD)
+        d.line((2, y, 13, y), fill=WOOD_L)
+        d.ellipse((11, y, 14, y + 3), fill=c("d8b078"))
+        d.point([(12, y + 1)], fill=WOOD_D)
+    save(add_outline(img), "icons", "wood.png")
+    img = icon(); d = ImageDraw.Draw(img)
+    d.polygon([(2, 12), (4, 6), (9, 4), (13, 7), (14, 13), (8, 14)], fill=c("8e8e9c"))
+    d.polygon([(4, 7), (9, 5), (10, 9), (5, 10)], fill=c("b4b4c2"))
+    d.line((9, 10, 12, 12), fill=c("5e5e6a"))
+    save(add_outline(img), "icons", "stone.png")
+    # held versions (swing sprites): handle starts at (1, 3), points right
+    img = Image.new("RGBA", (18, 9)); d = ImageDraw.Draw(img)
+    d.line((1, 4, 15, 4), fill=WOOD); d.line((1, 3, 14, 3), fill=WOOD_L)
+    d.polygon([(12, 1), (16, 0), (17, 7), (13, 6)], fill=STEEL)
+    d.line((16, 1, 16, 6), fill=STEEL_L)
+    save(add_outline(img), "sprites", "axe_held.png")
+    img = Image.new("RGBA", (18, 13)); d = ImageDraw.Draw(img)
+    d.line((1, 6, 14, 6), fill=WOOD); d.line((1, 5, 13, 5), fill=WOOD_L)
+    d.line((14, 1, 14, 11), fill=STEEL, width=2)
+    d.point([(13, 1), (13, 11)], fill=STEEL_D)
+    save(add_outline(img), "sprites", "pickaxe_held.png")
+
+
+def make_village():
+    # Hut: 2x2 tile footprint (64x32 diamond), walls + thatched pyramid roof.
+    W, H, T = 68, 62, 28              # image size, footprint top at y=T
+    img = Image.new("RGBA", (W, H)); d = ImageDraw.Draw(img)
+    cx = 34
+    top, right, bottom, left = (cx, T), (cx + 32, T + 16), (cx, T + 32), (cx - 32, T + 16)
+    wall = 18
+    up = lambda p, h: (p[0], p[1] - h)
+    d.polygon([left, bottom, up(bottom, wall), up(left, wall)], fill=c("8a6a44"))
+    d.polygon([bottom, right, up(right, wall), up(bottom, wall)], fill=c("6e5232"))
+    for i in range(1, 4):  # planks
+        d.line((left[0], left[1] - i * 5, bottom[0], bottom[1] - i * 5), fill=c("6e5232"))
+        d.line((bottom[0], bottom[1] - i * 5, right[0], right[1] - i * 5), fill=c("5a4228"))
+    # door (left wall) and window (right wall)
+    d.polygon([(cx - 18, T + 25), (cx - 10, T + 29), (cx - 10, T + 16), (cx - 18, T + 12)], fill=c("3e2a18"))
+    d.polygon([(cx + 12, T + 20), (cx + 20, T + 16), (cx + 20, T + 9), (cx + 12, T + 13)], fill=c("f8d070"))
+    d.line((cx + 16, T + 11, cx + 16, T + 18), fill=c("5a4228"))
+    # roof
+    e = 3
+    l2, b2, r2 = (left[0] - e, left[1] - wall), (bottom[0], bottom[1] - wall + e), (right[0] + e, right[1] - wall)
+    apex = (cx, T + 16 - wall - 24)
+    d.polygon([l2, b2, apex], fill=c("d4aa58"))
+    d.polygon([b2, r2, apex], fill=c("a87e3a"))
+    for i in range(1, 5):  # thatch lines
+        k = i / 5
+        d.line((l2[0] + (apex[0] - l2[0]) * k, l2[1] + (apex[1] - l2[1]) * k,
+                b2[0] + (apex[0] - b2[0]) * k, b2[1] + (apex[1] - b2[1]) * k), fill=c("b08a44"))
+        d.line((b2[0] + (apex[0] - b2[0]) * k, b2[1] + (apex[1] - b2[1]) * k,
+                r2[0] + (apex[0] - r2[0]) * k, r2[1] + (apex[1] - r2[1]) * k), fill=c("8a6430"))
+    add_outline(img)
+    save(shadow(img, cx, T + 18, 30, 14), "sprites", "hut.png")
+
+    # Fireplace: stone ring with logs and 3 animated flame frames (24x28 each)
+    sheet = Image.new("RGBA", (72, 28))
+    rng = random.Random(5)
+    for f in range(3):
+        img = Image.new("RGBA", (24, 28)); d = ImageDraw.Draw(img)
+        d.ellipse((2, 17, 21, 26), fill=c("3a2a20"))
+        d.line((5, 22, 18, 19), fill=c("6b4423"), width=2)
+        d.line((5, 19, 18, 23), fill=c("8a5a30"), width=2)
+        for a in range(10):
+            import math
+            ang = a / 10 * math.tau
+            x, y = 12 + math.cos(ang) * 9, 21.5 + math.sin(ang) * 4.5
+            d.ellipse((x - 2, y - 1.5, x + 2, y + 1.5), fill=c("8e8e9c") if a % 2 else c("a8a8b4"))
+        sway = (-1, 0, 1)[f]
+        d.polygon([(7, 20), (12 + sway, 4 + f), (17, 20)], fill=c("e0501c"))
+        d.polygon([(9, 20), (12 - sway, 9 + f % 2), (15, 20)], fill=c("f8a030"))
+        d.polygon([(10, 20), (12 + sway, 13), (14, 20)], fill=c("f8e070"))
+        add_outline(img)
+        for _ in range(2):  # sparks
+            img.putpixel((rng.randrange(6, 18), rng.randrange(0, 8)), c("f8e070"))
+        sheet.paste(img, (f * 24, 0))
+    save(sheet, "sprites", "fireplace.png")
+
+
 if __name__ == "__main__":
     make_terrain()
     make_tree()
@@ -628,3 +723,5 @@ if __name__ == "__main__":
     make_faces()
     make_slap()
     make_upgrade_icons()
+    make_tools_and_materials()
+    make_village()
