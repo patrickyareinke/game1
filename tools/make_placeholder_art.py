@@ -354,6 +354,105 @@ def make_player():
     save(sheet, "sprites", "player.png")
 
 
+# ---------------------------------------------------------------------------
+# Item / spell icons (16x16, outlined)       assets/icons/<id>.png
+# ---------------------------------------------------------------------------
+def icon():
+    return Image.new("RGBA", (16, 16))
+
+
+def flask(liquid, light):
+    img = icon()
+    d = ImageDraw.Draw(img)
+    d.rectangle((6, 3, 9, 6), fill=c("c8d8e8"))
+    d.rectangle((6, 2, 9, 2), fill=c("8a5a30"))
+    d.ellipse((3, 6, 12, 14), fill=c("c8d8e8"))
+    d.ellipse((4, 8, 11, 13), fill=liquid)
+    d.point([(5, 9), (5, 10), (6, 8)], fill=light)
+    return add_outline(img)
+
+
+def make_icons():
+    # stick
+    img = icon(); d = ImageDraw.Draw(img)
+    d.line((3, 13, 12, 3), fill=c("8a5a30"), width=2)
+    d.line((3, 12, 11, 3), fill=c("b07a44"))
+    save(add_outline(img), "icons", "stick.png")
+    # spellbook
+    img = icon(); d = ImageDraw.Draw(img)
+    d.rectangle((3, 2, 12, 13), fill=c("5a2e8a"))
+    d.rectangle((11, 3, 12, 12), fill=c("f0ead8"))
+    d.rectangle((3, 2, 4, 13), fill=c("3a1a5e"))
+    d.point([(8, 5), (7, 6), (8, 6), (9, 6), (8, 7), (6, 7), (10, 7), (8, 8)], fill=c("f2d64b"))
+    save(add_outline(img), "icons", "spellbook.png")
+    save(flask(c("d89a28"), c("f8d878")), "icons", "oil.png")
+    save(flask(c("3a7fc0"), c("a8d8f0")), "icons", "water.png")
+    # ash
+    img = icon(); d = ImageDraw.Draw(img)
+    d.ellipse((2, 8, 13, 14), fill=c("6e6e72"))
+    d.ellipse((4, 6, 11, 12), fill=c("9a9a9e"))
+    d.point([(6, 8), (9, 10), (5, 11), (10, 8)], fill=c("3e3e42"))
+    d.point([(7, 7)], fill=c("d0d0d4"))
+    save(add_outline(img), "icons", "ash.png")
+    # coin
+    img = icon(); d = ImageDraw.Draw(img)
+    d.ellipse((3, 3, 12, 12), fill=c("c8901c"))
+    d.ellipse((4, 4, 11, 11), fill=c("f2c94a"))
+    d.rectangle((7, 6, 8, 9), fill=c("c8901c"))
+    d.point([(5, 5), (6, 5)], fill=c("fff2b0"))
+    save(add_outline(img), "icons", "coin.png")
+    # spells
+    img = icon(); d = ImageDraw.Draw(img)
+    d.polygon([(2, 13), (7, 6), (5, 11)], fill=c("e05a1c"))
+    d.ellipse((5, 3, 13, 11), fill=c("d8381c"))
+    d.ellipse((6, 4, 12, 10), fill=c("f08a28"))
+    d.ellipse((8, 5, 11, 8), fill=c("f8e070"))
+    save(add_outline(img), "icons", "fireball.png")
+    img = icon(); d = ImageDraw.Draw(img)
+    d.ellipse((3, 3, 12, 12), fill=c("5e4026"))
+    d.ellipse((4, 4, 10, 10), fill=c("86603a"))
+    d.point([(6, 6), (7, 9), (9, 7)], fill=c("3e2a18"))
+    d.point([(5, 5)], fill=c("b08a5a"))
+    d.rectangle((8, 12, 8, 14), fill=c("5e4026"))
+    save(add_outline(img), "icons", "mudball.png")
+    img = icon(); d = ImageDraw.Draw(img)
+    d.rounded_rectangle((3, 4, 12, 13), radius=2, fill=c("9a6ae0"))
+    for x in (5, 7, 9, 11):
+        d.line((x, 4, x, 7), fill=c("6a3ab0"))
+    d.rectangle((2, 8, 4, 11), fill=c("b48af0"))
+    d.point([(5, 9), (6, 10), (9, 10)], fill=c("d8c0ff"))
+    save(add_outline(img), "icons", "fiststamp.png")
+
+
+def make_slime():
+    """2 frames of 18x16, feet at (9, 14)."""
+    sheet = Image.new("RGBA", (36, 16))
+    for f, box in enumerate([(2, 5, 15, 14), (1, 7, 16, 14)]):
+        img = Image.new("RGBA", (18, 16))
+        d = ImageDraw.Draw(img)
+        d.ellipse(box, fill=c("3e9a3a"))
+        d.ellipse((box[0] + 1, box[1], box[2] - 3, box[3] - 3), fill=c("5ec04e"))
+        d.point([(box[0] + 3, box[1] + 2), (box[0] + 4, box[1] + 2)], fill=c("c8f0b0"))
+        ey = box[1] + 4
+        d.point([(7, ey), (11, ey), (7, ey + 1), (11, ey + 1)], fill=c("1a2a14"))
+        add_outline(img)
+        sheet.paste(img, (f * 18, 0))
+    save(sheet, "sprites", "slime.png")
+
+
+def make_projectiles():
+    img = Image.new("RGBA", (12, 12)); d = ImageDraw.Draw(img)
+    d.ellipse((1, 1, 10, 10), fill=c("d8381c"))
+    d.ellipse((2, 2, 8, 8), fill=c("f08a28"))
+    d.ellipse((3, 3, 6, 6), fill=c("f8e070"))
+    save(img, "sprites", "fireball_proj.png")
+    img = Image.new("RGBA", (10, 10)); d = ImageDraw.Draw(img)
+    d.ellipse((1, 1, 8, 8), fill=c("5e4026"))
+    d.ellipse((2, 2, 6, 6), fill=c("86603a"))
+    d.point([(3, 3)], fill=c("b08a5a"))
+    save(add_outline(img), "sprites", "mudball_proj.png")
+
+
 if __name__ == "__main__":
     make_terrain()
     make_tree()
@@ -362,3 +461,6 @@ if __name__ == "__main__":
     make_crate()
     make_stick()
     make_player()
+    make_icons()
+    make_slime()
+    make_projectiles()

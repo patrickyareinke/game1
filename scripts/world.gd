@@ -26,12 +26,17 @@ const FOOT := {
 var terrain := PackedByteArray()   # T per cell, index = y * MAP_SIZE + x
 var variant := PackedByteArray()   # random 0..99 per cell for tile variety
 var props := {}                    # Vector2i -> { "type": String, "node": Sprite2D }
-var build_mode := false
 
+const ENEMY_COUNT := 12
+const ENEMY_SCRIPT := preload("res://scripts/enemy.gd")
+const PROJECTILE_SCRIPT := preload("res://scripts/projectile.gd")
+const FX_SCRIPT := preload("res://scripts/fx.gd")
+
+var rng := RandomNumberGenerator.new()
 var ground: Node2D
 var entities: Node2D
 var player: Node2D
-var hud: Label
+var ui: CanvasLayer
 
 
 func _ready() -> void:
@@ -53,15 +58,19 @@ func _ready() -> void:
 	player.position = cell_center(Vector2i(MAP_SIZE / 2, MAP_SIZE / 2))
 	entities.add_child(player)
 
-	var layer := CanvasLayer.new()
-	add_child(layer)
-	hud = Label.new()
-	hud.position = Vector2(4, 2)
-	hud.add_theme_font_size_override("font_size", 8)
-	hud.add_theme_color_override("font_outline_color", Color.BLACK)
-	hud.add_theme_constant_override("outline_size", 2)
-	layer.add_child(hud)
-	_update_hud()
+	rng.randomize()
+	for i in ENEMY_COUNT:
+		_spawn_enemy()
+	var respawn := Timer.new()
+	respawn.wait_time = 8.0
+	respawn.autostart = true
+	respawn.timeout.connect(func():
+		if get_tree().get_nodes_in_group("enemies").size() < ENEMY_COUNT:
+			_spawn_enemy())
+	add_child(respawn)
+
+	ui = preload("res://scripts/ui.gd").new()
+	add_child(ui)
 
 
 # --- coordinates -----------------------------------------------------------
@@ -104,7 +113,6 @@ func is_walkable_at(p: Vector2) -> bool:
 # --- generation ------------------------------------------------------------
 
 func _generate() -> void:
-	var rng := RandomNumberGenerator.new()
 	rng.seed = SEED
 	var n_water := FastNoiseLite.new()
 	n_water.seed = SEED
@@ -161,10 +169,49 @@ func _remove_prop(cell: Vector2i) -> void:
 	props.erase(cell)
 
 
-# --- interaction -----------------------------------------------------------
+# --- enemies ---------------------------------------------------------------
+
+func _spawn_enemy() -> void:
+	## Random free grass/dirt cell, not too close to the player.
+	for attempt in 50:
+		var cell := Vector2i(rng.randi_range(0, MAP_SIZE - 1), rng.randi_range(0, MAP_SIZE - 1))
+		if not is_walkable_cell(cell):
+			continue
+		var pos := cell_center(cell)
+		var from: Vector2 = player.position if player else cell_center(Vector2i(MAP_SIZE / 2, MAP_SIZE / 2))
+		if pos.distance_to(from) < 150.0:
+			continue
+		var e := ENEMY_SCRIPT.new()
+		e.world = self
+		e.position = pos
+		entities.add_child(e)
+		return
+
+
+func on_enemy_killed(enemy: Node2D) -> void:
+	var coins := rng.randi_range(1, 3)
+	Game.add_money(coins)
+	var text := "+%d coins" % coins
+	if rng.randf() < 0.7:
+		Game.add_item("oil")
+		text += "  +1 Oil"
+	popup(enemy.position + Vector2(0, -30), text, Color(1, 0.85, 0.3))
+	ring_fx(enemy.position, 14.0, Color(0.5, 1, 0.4))
+
+
+# --- combat & effects ------------------------------------------------------
 
 func hit_at(point: Vector2) -> void:
-	## Called by the player's stick swing. Cuts bushes, shakes trees.
+	## Called by the player's stick swing (point is on the ground).
+	var hit_enemy := false
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e.position.distance_to(point) < 14.0:
+			e.take_damage(Game.stick_damage(), player.position)
+			Game.add_stat("fighter", Game.FIGHTER_PER_HIT)
+			hit_enemy = true
+	if hit_enemy:
+		return
+
 	var center := screen_to_grid(point)
 	var best := Vector2i(-1, -1)
 	var best_d := 14.0
@@ -191,16 +238,88 @@ func hit_at(point: Vector2) -> void:
 			tw.tween_property(node, "position:x", x, 0.04)
 
 
+func burn_bush(cell: Vector2i) -> void:
+	var pos := cell_center(cell)
+	_remove_prop(cell)
+	Game.add_item("ash", 2)
+	popup(pos + Vector2(0, -20), "+2 Ash", Color(0.85, 0.85, 0.85))
+	ring_fx(pos, 16.0, Color(1, 0.5, 0.1))
+
+
+func spawn_projectile(kind: String, from: Vector2, to: Vector2, dmg: float) -> void:
+	var p := PROJECTILE_SCRIPT.new()
+	# aim from the hand to the cursor, but travel along the ground
+	p.setup(self, kind, from, to + Vector2(0, 12), dmg)
+	entities.add_child(p)
+
+
+func spawn_fiststamp(target: Vector2, dmg: float) -> void:
+	var fist := Sprite2D.new()
+	fist.texture = Game.icons["fiststamp"]
+	fist.scale = Vector2(2, 2)
+	fist.z_index = 50
+	fist.position = target + Vector2(0, -70)
+	fist.modulate.a = 0.0
+	add_child(fist)
+	var tw := create_tween()
+	tw.tween_property(fist, "modulate:a", 1.0, 0.1)
+	tw.tween_property(fist, "position", target + Vector2(0, -12), 0.18) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_callback(_fist_impact.bind(target, dmg))
+	tw.tween_property(fist, "modulate:a", 0.0, 0.2)
+	tw.tween_callback(fist.queue_free)
+
+
+func _fist_impact(target: Vector2, dmg: float) -> void:
+	const RADIUS := 28.0
+	ring_fx(target, RADIUS * 1.4, Color(0.75, 0.55, 1.0), 0.4)
+	for e in get_tree().get_nodes_in_group("enemies"):
+		var d: Vector2 = e.position - target
+		if Vector2(d.x, d.y * 2.0).length() < RADIUS * 2.0:  # iso ellipse
+			e.take_damage(dmg, target, 220.0)
+
+
+func ring_fx(pos: Vector2, radius: float, color: Color, duration := 0.3) -> void:
+	var fx := FX_SCRIPT.new()
+	fx.position = pos
+	fx.radius = radius
+	fx.color = color
+	fx.duration = duration
+	fx.z_index = 40
+	add_child(fx)
+
+
+func popup(pos: Vector2, text: String, color: Color) -> void:
+	## Floating text that rises and fades.
+	var l := Label.new()
+	l.text = text
+	l.z_index = 100
+	l.add_theme_font_size_override("font_size", 8)
+	l.add_theme_color_override("font_color", color)
+	l.add_theme_color_override("font_outline_color", Color.BLACK)
+	l.add_theme_constant_override("outline_size", 2)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.size = Vector2(120, 12)
+	l.position = pos - Vector2(60, 6)
+	add_child(l)
+	var tw := create_tween()
+	tw.tween_property(l, "position:y", l.position.y - 14, 0.8)
+	tw.parallel().tween_property(l, "modulate:a", 0.0, 0.5).set_delay(0.3)
+	tw.tween_callback(l.queue_free)
+
+
+# --- building --------------------------------------------------------------
+
 func _unhandled_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if key and key.pressed and not key.echo and key.physical_keycode == KEY_B:
-		build_mode = not build_mode
-		_update_hud()
+		Game.build_mode = not Game.build_mode
+		Game.changed.emit()
 		ground.queue_redraw()
 		return
 
 	var mb := event as InputEventMouseButton
-	if not (build_mode and mb and mb.pressed):
+	if not (Game.build_mode and mb and mb.pressed) or Game.ui_open:
 		return
 	var cell := screen_to_grid(get_global_mouse_position())
 	if mb.button_index == MOUSE_BUTTON_LEFT:
@@ -208,13 +327,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if is_walkable_cell(cell) and cell != player_cell:
 			props[cell] = {"type": "crate"}
 			_spawn_prop_node(cell)
+			Game.add_stat("building", Game.BUILDING_PER_BLOCK)
 	elif mb.button_index == MOUSE_BUTTON_RIGHT:
 		if props.has(cell) and props[cell]["type"] == "crate":
 			_remove_prop(cell)
-
-
-func _update_hud() -> void:
-	if build_mode:
-		hud.text = "BUILD MODE   L-click: place   R-click: remove   B: exit"
-	else:
-		hud.text = "WASD: move   Click: swing stick   B: build mode"

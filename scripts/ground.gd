@@ -12,7 +12,7 @@ var hover := Vector2i(-1, -1)
 
 
 func _process(_delta: float) -> void:
-	if not world.build_mode:
+	if not Game.build_mode:
 		return
 	var cell: Vector2i = world.screen_to_grid(get_global_mouse_position())
 	if cell != hover:
@@ -42,7 +42,7 @@ func _draw() -> void:
 				if world.terrain_at(c) == kind:
 					_tile(c, base + world.variant_at(c) % 2)
 
-	if world.build_mode and world.in_bounds(hover):
+	if Game.build_mode and world.in_bounds(hover):
 		var t: Vector2 = world.grid_to_screen(hover)
 		draw_colored_polygon(PackedVector2Array([
 			t, t + Vector2(16, 8), t + Vector2(0, 16), t + Vector2(-16, 8)

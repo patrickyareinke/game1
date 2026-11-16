@@ -10,8 +10,34 @@ Isometric 2D building & survival game in SNES-style pixel art, made with **Godot
 
 Controls:
 - **WASD**: walk
-- **Left click**: swing stick toward the mouse (cuts bushes, shakes trees)
+- **Left click**: swing stick toward the mouse (hits slimes, cuts bushes, shakes trees)
+- **Right click**: cast the active spell toward the mouse
+- **Q**: spell ring (pick Fireball, Mudball or Magic Fiststamp; or press 1/2/3)
+- **E**: inventory (5x8) with coins and stats; click the spellbook to read your spells
+- **F**: collect water when standing next to a pond
 - **B**: toggle build mode (left click places a crate, right click removes it)
+
+## Stats & spells
+
+All stats start at 1 and are shown as whole numbers.
+
+| Stat | Grows by | Effect |
+|---|---|---|
+| Fighter | +0.005 per stick hit on an enemy | stick damage |
+| Alchemy | +0.005 per spell cast | spell damage |
+| Building | +0.005 per placed crate | (none yet) |
+| Fitness | +0.001 per tile walked | walking speed |
+| Wisdom | (not decided yet) | (none yet) |
+
+Every cast also makes that spell +0.01 stronger.
+
+| Spell | Ingredients | Effect |
+|---|---|---|
+| Fireball | 1 Oil + 1 Ash | 3 damage, burns bushes into 2 Ash |
+| Mudball | 1 Water | 1 damage, slows for 3 s |
+| Magic Fiststamp | none (2 s cooldown) | 2 area damage at the cursor + knockback |
+
+Where ingredients come from: **Oil** from slimes (70 %), **Ash** from burning bushes, **Water** with F at a pond. Slimes also drop 1-3 coins.
 
 ## Folder layout
 
@@ -20,7 +46,13 @@ project.godot              settings: 480x270 pixel view scaled 3x, sharp pixels
 scenes/main.tscn           main scene (Main node with world.gd)
 scripts/world.gd           map generation, props, building, collision
 scripts/ground.gd          draws the terrain (no grid lines)
-scripts/player.gd          character: movement, walk animation, stick swing
+scripts/player.gd          character: movement, stick, spells, HP
+scripts/game_state.gd      autoload "Game": inventory, coins, stats, spells
+scripts/ui.gd              HUD, inventory, spell ring, spellbook
+scripts/enemy.gd           slime enemy
+scripts/projectile.gd      fireball / mudball
+scripts/fx.gd              impact ring effect
+assets/icons/*.png         16x16 item and spell icons
 assets/tiles/terrain.png   terrain atlas, 10 cells of 40x20
 assets/sprites/*.png       player, tree, bush, rock, crate, stick
 tools/make_placeholder_art.py  regenerates all placeholder art
@@ -42,6 +74,7 @@ Draw your own PNGs with the same size and layout and overwrite the files:
 - [x] Isometric grid, place/remove blocks
 - [x] Player with WASD movement and stick swing
 - [x] Generated level: grass, paths, ponds, trees, rocks, bushes
+- [x] Inventory, stats, spells, slime enemies
 - [ ] Building types with resource costs
 - [ ] Resource tick (wood, stone, food)
 - [ ] Day/night + threats
