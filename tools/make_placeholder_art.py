@@ -1082,6 +1082,54 @@ def make_cocoon_and_stump():
     save(shadow(img, 10, 11, 8, 2), "sprites", "stump.png")
 
 
+def make_ui():
+    """SNES-style menu pieces (9-slice textures) and the money pouch icon."""
+    # window: dithered blue gradient, double border with light bevel
+    W, H = 32, 64
+    img = Image.new("RGBA", (W, H))
+    px = img.load()
+    BLUES = [c("101a5a"), c("17267a"), c("1f3496"), c("2a44ae"), c("3655c2")]
+    top, bottom = (58, 88, 200), (14, 22, 84)
+    for y in range(H):                       # smooth top-to-bottom bands
+        k = y / (H - 1)
+        col = tuple(int(top[i] + (bottom[i] - top[i]) * k) for i in range(3)) + (255,)
+        for x in range(W):
+            px[x, y] = col
+    d = ImageDraw.Draw(img)
+    d.rectangle((0, 0, W - 1, H - 1), outline=c("0a0a18"))           # outer dark
+    d.rectangle((1, 1, W - 2, H - 2), outline=c("e8e8f0"))           # white frame
+    d.line((2, H - 2, W - 2, H - 2), fill=c("8a8aa8")); d.line((W - 2, 2, W - 2, H - 2), fill=c("8a8aa8"))
+    d.rectangle((2, 2, W - 3, H - 3), outline=c("0a0a18"))           # inner dark line
+    for (x, y) in ((0, 0), (W - 1, 0), (0, H - 1), (W - 1, H - 1), (1, 1), (W - 2, 1), (1, H - 2), (W - 2, H - 2)):
+        px[x, y] = (0, 0, 0, 0) if x in (0, W - 1) or y in (0, H - 1) else c("0a0a18")
+    save(img, "ui", "window.png")
+
+    def slot(name, edge_hi, edge_lo, fill, frame=None):
+        S = 16
+        im = Image.new("RGBA", (S, S), fill)
+        dd = ImageDraw.Draw(im)
+        dd.line((0, 0, S - 1, 0), fill=edge_lo); dd.line((0, 0, 0, S - 1), fill=edge_lo)       # inset shadow
+        dd.line((0, S - 1, S - 1, S - 1), fill=edge_hi); dd.line((S - 1, 0, S - 1, S - 1), fill=edge_hi)
+        if frame:
+            dd.rectangle((1, 1, S - 2, S - 2), outline=frame)
+            dd.rectangle((2, 2, S - 3, S - 3), outline=tuple(int(v * 0.7) for v in frame[:3]) + (255,))
+        save(im, "ui", name + ".png")
+    slot("slot", c("5a6ab8"), c("05081e"), c("0e1648"))
+    slot("slot_hover", c("5a6ab8"), c("05081e"), c("1c2a6e"), c("f2d64b"))
+    slot("slot_equipped", c("5a6ab8"), c("05081e"), c("3a2e10"), c("f2d64b"))
+
+    # money pouch: leather bag tied with string, gold coins peeking out
+    img = icon(); d = ImageDraw.Draw(img)
+    shaded_ellipse(img, 8, 10, 6, 5, [c("4a2c14"), c("6e4422"), c("8e5c30"), c("b07a44")])
+    d.polygon([(5, 6), (11, 6), (10, 3), (6, 3)], fill=c("8e5c30"))
+    d.line((5, 6, 11, 6), fill=c("d8b048"))                          # string
+    d.point([(12, 5), (12, 4)], fill=c("d8b048"))
+    d.ellipse((5, 1, 8, 4), fill=c("f2c94a")); d.ellipse((8, 0, 11, 3), fill=c("e0b030"))
+    d.point([(6, 2), (9, 1)], fill=c("fff2b0"))
+    d.point([(7, 10), (8, 10), (9, 10), (8, 9), (8, 11)], fill=c("f2c94a"))  # stitched coin mark
+    save(add_outline(img), "icons", "money.png")
+
+
 if __name__ == "__main__":
     make_terrain()
     make_tree()
@@ -1102,3 +1150,4 @@ if __name__ == "__main__":
     make_remains()
     make_heart()
     make_cocoon_and_stump()
+    make_ui()

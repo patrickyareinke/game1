@@ -31,3 +31,7 @@ environment/defaults/default_clear_color=Color(0.08, 0.14, 0.1, 1)
 [autoload]
 
 Game="*res://scripts/game_state.gd"
+
+[gui]
+
+theme/custom_font="res://assets/fonts/pixel.fnt"

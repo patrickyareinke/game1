@@ -87,7 +87,7 @@ var cutscene := false       # boss intro: player, enemies and boss wait
 
 func _ready() -> void:
 	for id in ["stick", "spellbook", "oil", "ash", "water", "coin",
-			"fireball", "mudball", "fiststamp", "slap", "face", "face_hurt",
+			"fireball", "mudball", "fiststamp", "slap", "face", "face_hurt", "money",
 			"axe", "pickaxe", "wood", "stone"]:
 		icons[id] = load("res://assets/icons/%s.png" % id)
 	for spell in UPGRADES:

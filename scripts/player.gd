@@ -16,8 +16,14 @@ const HURT_TIME := 0.4
 const FAINT_TIME := 2.6
 const WALK_FPS := 8.0
 const HAND := Vector2(0, -14)        # stick pivot, relative to the feet
-const SWING_TIME := 0.22
-const SWING_ARC := deg_to_rad(150.0)
+# Swing feel per tool: total time, arc, wind-up share, reach, impact shake
+const SWINGS := {
+	"stick": {"time": 0.28, "arc": 150.0, "wind": 0.26, "reach": 16.0, "shake": 1.0},
+	"axe": {"time": 0.44, "arc": 175.0, "wind": 0.36, "reach": 17.0, "shake": 2.6},
+	"pickaxe": {"time": 0.40, "arc": 165.0, "wind": 0.34, "reach": 16.0, "shake": 2.0},
+}
+const WIND_BACK := deg_to_rad(35.0)  # how far the tool is raised before striking
+const STRIKE_END := 0.72             # share of the swing where the strike ends
 const REACH := 16.0
 const INVULN_TIME := 1.0
 const BODY_LENGTH := 32.0             # sprite height in world pixels
@@ -29,6 +35,15 @@ var dir := Dir.DOWN
 var walk_time := 0.0
 var swing_t := -1.0                  # < 0 means not swinging
 var swing_angle := 0.0
+var swing := {}                      # current tool's SWINGS entry
+var swing_sign := 1.0                # sweep direction
+var swing_hit_done := false
+var smear_from := 0.0                # arc of the motion smear (angles)
+var smear_to := 0.0
+var smear_alpha := 0.0
+var smear: Node2D
+var shake := 0.0                     # camera shake strength (pixels)
+var cam_base := Vector2.ZERO         # camera offset without shake
 var knock := Vector2.ZERO
 var invuln := 0.0
 var cooldowns := {}                  # spell id -> seconds left
@@ -74,8 +89,23 @@ func _ready() -> void:
 	stick.visible = false
 	add_child(stick)
 
+	smear = Node2D.new()
+	smear.position = HAND
+	smear.draw.connect(_draw_smear)
+	add_child(smear)
+
 	cam = Camera2D.new()
 	cam.zoom = Vector2(ZOOM, ZOOM)
+	# small dead zone: you can move a few pixels before the camera follows,
+	# then it catches up smoothly
+	cam.drag_horizontal_enabled = true
+	cam.drag_vertical_enabled = true
+	cam.drag_left_margin = 0.06
+	cam.drag_right_margin = 0.06
+	cam.drag_top_margin = 0.08
+	cam.drag_bottom_margin = 0.08
+	cam.position_smoothing_enabled = true
+	cam.position_smoothing_speed = 6.0
 	cam.ignore_rotation = false          # the boss intro tilts the camera
 	add_child(cam)
 
@@ -92,6 +122,7 @@ func _physics_process(delta: float) -> void:
 		return
 	if Game.cutscene:
 		_set_frame(Anim.IDLE, 0.0)
+		cam_base = cam.offset            # cutscenes drive the camera directly
 		return
 	var input := Vector2(
 		float(Input.is_physical_key_pressed(KEY_D)) - float(Input.is_physical_key_pressed(KEY_A)),
@@ -129,7 +160,7 @@ func _physics_process(delta: float) -> void:
 
 	hurt_t = maxf(hurt_t - delta, 0.0)
 	if swing_t >= 0.0:
-		_set_frame(Anim.ATTACK, clampf(swing_t / SWING_TIME, 0.0, 0.999), true)
+		_set_frame(Anim.ATTACK, clampf(swing_t / swing["time"], 0.0, 0.999), true)
 	elif hurt_t > 0.0:
 		_set_frame(Anim.HURT, 1.0 - hurt_t / HURT_TIME, true)
 	elif moving:
@@ -145,7 +176,9 @@ func _physics_process(delta: float) -> void:
 		cam_target = ((world.boss.position + Vector2(0, -40)) - position) * 0.5
 		cam_target = cam_target.limit_length(110.0)
 		cam_target.y = maxf(cam_target.y, -BODY_LENGTH * 2.5)   # never down into the HUD
-	cam.offset = cam.offset.lerp(cam_target, minf(1.0, delta * 5.0))
+	cam_base = cam_base.lerp(cam_target, minf(1.0, delta * 5.0))
+	shake = move_toward(shake, 0.0, delta * 18.0)
+	cam.offset = cam_base + Vector2(randf_range(-shake, shake), randf_range(-shake, shake))
 	var z := CAVE_ZOOM if world.in_cave else ZOOM
 	cam.zoom = cam.zoom.lerp(Vector2(z, z), minf(1.0, delta * 4.0))
 	cam.rotation = lerpf(cam.rotation, 0.0, minf(1.0, delta * 4.0))
@@ -183,28 +216,86 @@ func _start_swing() -> void:
 	var aim := get_global_mouse_position() - (global_position + HAND)
 	swing_angle = aim.angle()
 	dir = _dir_from(aim)
+	swing = SWINGS.get(Game.equipped, SWINGS["stick"])
+	# sweep downward in front of the body: clockwise when aiming right
+	swing_sign = 1.0 if cos(swing_angle) >= 0.0 else -1.0
 	swing_t = 0.0
+	swing_hit_done = false
+	smear_alpha = 0.0
 	var tool: Dictionary = Game.TOOLS[Game.equipped]
 	stick.texture = load(tool["held"])
 	stick.offset = tool["pivot"]
 	stick.visible = true
-	# stick goes behind the body when swinging away from the camera
+	stick.modulate.a = 1.0
+	var side := 3.0 * swing_sign if dir == Dir.LEFT or dir == Dir.RIGHT else 0.0
+	stick.position = HAND + Vector2(side, 1.0 if side != 0.0 else 0.0)
+	smear.position = stick.position
+	# tool goes behind the body when swinging away from the camera
 	move_child(stick, 0 if dir == Dir.UP else sprite.get_index() + 1)
+	move_child(smear, stick.get_index() + 1)
 	_update_swing(0.0)
-	world.hit_at(position + Vector2.from_angle(swing_angle) * REACH, Game.equipped)
+
+
+func _swing_angle(k: float) -> float:
+	## Wind-up (raise the tool back), fast strike, overshoot and settle.
+	var arc := deg_to_rad(swing["arc"])
+	var start := swing_angle - swing_sign * arc / 2.0
+	var back := start - swing_sign * WIND_BACK
+	var stop := swing_angle + swing_sign * arc / 2.0
+	var wind: float = swing["wind"]
+	if k < wind:
+		var u := k / wind
+		return lerpf(start, back, 1.0 - pow(1.0 - u, 2.0))         # ease out: lift
+	if k < STRIKE_END:
+		var u := (k - wind) / (STRIKE_END - wind)
+		return lerpf(back, stop + swing_sign * 0.15, u * u * (3.0 - 2.0 * u) * 0.35 + u * u * 0.65)
+	var u := (k - STRIKE_END) / (1.0 - STRIKE_END)
+	return lerpf(stop + swing_sign * 0.15, stop, 1.0 - pow(1.0 - u, 3.0))   # settle
 
 
 func _update_swing(delta: float) -> void:
 	if swing_t < 0.0:
 		return
 	swing_t += delta
-	var k := swing_t / SWING_TIME
+	var k: float = swing_t / swing["time"]
 	if k >= 1.0:
 		swing_t = -1.0
 		stick.visible = false
+		smear_alpha = 0.0
+		smear.queue_redraw()
 		return
-	var eased := 1.0 - pow(1.0 - k, 3.0)
-	stick.rotation = swing_angle - SWING_ARC / 2.0 + SWING_ARC * eased
+	var a := _swing_angle(k)
+	stick.rotation = a
+	# motion smear trails the tool during the strike, then fades
+	var wind: float = swing["wind"]
+	if k >= wind and k < STRIKE_END:
+		smear_from = _swing_angle(maxf(wind, k - 0.16))
+		smear_to = a
+		smear_alpha = 0.55
+	else:
+		smear_alpha = maxf(0.0, smear_alpha - delta * 6.0)
+	smear.queue_redraw()
+	if k > 0.85:
+		stick.modulate.a = 1.0 - (k - 0.85) / 0.15
+	# the hit lands when the tool passes the aim direction
+	var strike_mid := wind + (STRIKE_END - wind) * 0.55
+	if not swing_hit_done and k >= strike_mid:
+		swing_hit_done = true
+		world.hit_at(position + Vector2.from_angle(swing_angle) * swing["reach"], Game.equipped)
+		if world.last_hit:
+			shake = swing["shake"]
+
+
+func _draw_smear() -> void:
+	if smear_alpha <= 0.0:
+		return
+	var a0 := minf(smear_from, smear_to)
+	var a1 := maxf(smear_from, smear_to)
+	if a1 - a0 < 0.05:
+		return
+	var r := 13.0
+	smear.draw_arc(Vector2.ZERO, r, a0, a1, 14, Color(1, 1, 0.92, smear_alpha), 3.0)
+	smear.draw_arc(Vector2.ZERO, r - 3.0, a0 + (a1 - a0) * 0.3, a1, 10, Color(1, 1, 1, smear_alpha * 0.5), 1.5)
 
 
 # --- spells ----------------------------------------------------------------

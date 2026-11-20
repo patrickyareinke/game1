@@ -52,11 +52,11 @@ func _draw() -> void:
 		draw_polyline(pts, Color(1, 0.95, 0.7, a), 1.0)
 	if near:
 		# small "F" key hint above it
-		var p := Vector2(-4, -14 if kind == "stash" else -18)
-		draw_rect(Rect2(p, Vector2(8, 8)), Color(0.1, 0.1, 0.2, 0.85))
-		draw_rect(Rect2(p, Vector2(8, 8)), Color(1, 0.95, 0.7), false, 1.0)
-		draw_string(ThemeDB.fallback_font, p + Vector2(1.5, 6.5), "F", HORIZONTAL_ALIGNMENT_LEFT, -1, 7,
-			Color(1, 0.95, 0.7))
+		var p := Vector2(-4, -16 if kind == "stash" else -20)
+		draw_rect(Rect2(p, Vector2(9, 11)), Color(0.07, 0.1, 0.35, 0.9))
+		draw_rect(Rect2(p, Vector2(9, 11)), Color(0.92, 0.92, 0.96), false, 1.0)
+		draw_string(preload("res://assets/fonts/pixel.fnt"), p + Vector2(2, 9), "F", HORIZONTAL_ALIGNMENT_LEFT, -1, 10,
+			Color(1, 1, 1))
 
 
 func collect() -> void:

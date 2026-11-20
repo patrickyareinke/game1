@@ -505,6 +505,7 @@ func enter_cave() -> void:
 func _arrive_in_cave() -> void:
 	player.position = cell_center(arena_arrival)
 	player.last_cell = arena_arrival
+	player.cam.reset_smoothing()
 	if boss == null and not Game.boss_defeated:
 		boss = preload("res://scripts/boss.gd").new()
 		boss.world = self
@@ -591,6 +592,7 @@ func _boss_reveal() -> void:
 func exit_cave() -> void:
 	player.position = cell_center(mountain_exit)
 	player.last_cell = mountain_exit
+	player.cam.reset_smoothing()
 	_set_cave_view(false)
 
 
@@ -600,6 +602,7 @@ func respawn_player() -> void:
 		_set_cave_view(false)
 	player.position = cell_center(village + Vector2i(1, 2))
 	player.last_cell = village + Vector2i(1, 2)
+	player.cam.reset_smoothing()
 	if boss and not boss.dead:
 		boss.reset()
 
@@ -813,8 +816,12 @@ func on_enemy_killed(enemy: Node2D) -> void:
 
 # --- combat & effects ------------------------------------------------------
 
+var last_hit := false   # did the last hit_at() connect with something?
+
+
 func hit_at(point: Vector2, tool := "stick") -> void:
 	## Called by the player's swing (point is on the ground).
+	last_hit = false
 	var hit_enemy := false
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if e.position.distance_to(point) < 14.0 + e.hit_radius:
@@ -822,6 +829,7 @@ func hit_at(point: Vector2, tool := "stick") -> void:
 			Game.add_stat("fighter", Game.FIGHTER_PER_HIT)
 			hit_enemy = true
 	if hit_enemy:
+		last_hit = true
 		return
 
 	var center := screen_to_grid(point)
@@ -839,6 +847,7 @@ func hit_at(point: Vector2, tool := "stick") -> void:
 	if best == Vector2i(-1, -1):
 		return
 	var type: String = props[best]["type"]
+	last_hit = true
 	if type == "bush":
 		_remove_prop(best)
 	elif HARVEST.has(type):
@@ -971,10 +980,12 @@ func popup(pos: Vector2, text: String, color: Color) -> void:
 	var l := Label.new()
 	l.text = text
 	l.z_index = 100
-	l.add_theme_font_size_override("font_size", 8)
+	l.add_theme_font_override("font", preload("res://assets/fonts/pixel.fnt"))
+	l.add_theme_font_size_override("font_size", 10)
 	l.add_theme_color_override("font_color", color)
-	l.add_theme_color_override("font_outline_color", Color.BLACK)
-	l.add_theme_constant_override("outline_size", 2)
+	l.add_theme_color_override("font_shadow_color", Color(0.02, 0.02, 0.08, 0.9))
+	l.add_theme_constant_override("shadow_offset_x", 1)
+	l.add_theme_constant_override("shadow_offset_y", 1)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.size = Vector2(120, 12)
 	var z: float = player.cam.zoom.x if player and player.cam else 1.0

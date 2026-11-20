@@ -3,7 +3,11 @@ extends CanvasLayer
 ## spellbook, spell-upgrade choice. Built in code; reads from the Game
 ## autoload and redraws on Game.changed.
 
-const SLOT := 18
+const SLOT := 24                          # 16 px icon + 4 px inset each side
+const FONT := preload("res://assets/fonts/pixel.fnt")
+const FONT_SIZE := 10                     # native size of the pixel font
+const SHADOW := Color(0.02, 0.02, 0.08, 0.9)
+const TEX_WINDOW := preload("res://assets/ui/window.png")
 const PANEL_BG := Color("1d2b6b")        # SNES-style blue menu
 const PANEL_BORDER := Color("e8e8ff")
 const SLOT_BG := Color("101a48")
@@ -16,8 +20,8 @@ const SCREEN := Vector2(480, 270)
 var face: TextureRect
 var hp_bar: Control
 var tool_icon: TextureRect
-var slot_normal: StyleBoxFlat
-var slot_equipped: StyleBoxFlat
+var slot_normal: StyleBox
+var slot_equipped: StyleBox
 var build_label: Label
 var boss_box: Control
 var boss_status: Label
@@ -26,6 +30,7 @@ var slots: Array[Button] = []
 var slot_counts: Array[Label] = []
 var coins_label: Label
 var stats_label: Label
+var stats_values: Label
 var book_panel: PanelContainer
 var book_label: Label
 var ring: Control
@@ -57,6 +62,23 @@ func _ready() -> void:
 
 # --- helpers ---------------------------------------------------------------
 
+func _window(margin := 8) -> StyleBoxTexture:
+	## SNES menu window: blue gradient, white bevelled frame (9-slice).
+	var sb := StyleBoxTexture.new()
+	sb.texture = TEX_WINDOW
+	sb.set_texture_margin_all(4)
+	sb.set_content_margin_all(margin)
+	return sb
+
+
+func _slot_box(name: String) -> StyleBoxTexture:
+	var sb := StyleBoxTexture.new()
+	sb.texture = load("res://assets/ui/%s.png" % name)
+	sb.set_texture_margin_all(4)
+	sb.set_content_margin_all(4)
+	return sb
+
+
 func _box(bg: Color, border := PANEL_BORDER, margin := 4) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = bg
@@ -70,10 +92,13 @@ func _box(bg: Color, border := PANEL_BORDER, margin := 4) -> StyleBoxFlat:
 func _label(text := "", color := Color.WHITE) -> Label:
 	var l := Label.new()
 	l.text = text
-	l.add_theme_font_size_override("font_size", 8)
+	l.add_theme_font_override("font", FONT)
+	l.add_theme_font_size_override("font_size", FONT_SIZE)
 	l.add_theme_color_override("font_color", color)
-	l.add_theme_color_override("font_outline_color", Color.BLACK)
-	l.add_theme_constant_override("outline_size", 2)
+	l.add_theme_color_override("font_shadow_color", SHADOW)   # SNES-style drop shadow
+	l.add_theme_constant_override("shadow_offset_x", 1)
+	l.add_theme_constant_override("shadow_offset_y", 1)
+	l.add_theme_constant_override("line_spacing", 1)
 	return l
 
 
@@ -153,28 +178,28 @@ func _draw_boss_bar() -> void:
 
 func _build_inventory() -> void:
 	inv_panel = PanelContainer.new()
-	inv_panel.add_theme_stylebox_override("panel", _box(PANEL_BG, PANEL_BORDER, 6))
+	inv_panel.add_theme_stylebox_override("panel", _window(10))
 	inv_panel.visible = false
 	_centered(inv_panel)
 
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
+	row.add_theme_constant_override("separation", 14)
 	inv_panel.add_child(row)
 
 	var left := VBoxContainer.new()
 	row.add_child(left)
-	left.add_child(_label("INVENTORY", GOLD))
+	left.add_theme_constant_override("separation", 4)
+	left.add_child(_label("ITEMS", GOLD))
 	var grid := GridContainer.new()
 	grid.columns = 8
 	grid.add_theme_constant_override("h_separation", 2)
 	grid.add_theme_constant_override("v_separation", 2)
 	left.add_child(grid)
 
-	var normal := _box(SLOT_BG, Color("5a6ab0"), 1)
-	var hover := _box(SLOT_HOVER, GOLD, 1)
+	var normal := _slot_box("slot")
+	var hover := _slot_box("slot_hover")
 	slot_normal = normal
-	slot_equipped = _box(Color("4a3a10"), GOLD, 1)
-	slot_equipped.set_border_width_all(2)
+	slot_equipped = _slot_box("slot_equipped")
 	for i in Game.SLOTS:
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(SLOT, SLOT)
@@ -189,30 +214,40 @@ func _build_inventory() -> void:
 		slots.append(b)
 		var cnt := _label()
 		cnt.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		cnt.position = Vector2(0, 7)
-		cnt.size = Vector2(SLOT - 1, 10)
+		cnt.position = Vector2(0, SLOT - 12)
+		cnt.size = Vector2(SLOT - 2, 11)
 		b.add_child(cnt)
 		slot_counts.append(cnt)
 
 	var right := VBoxContainer.new()
-	right.custom_minimum_size = Vector2(80, 0)
+	right.custom_minimum_size = Vector2(96, 0)
+	right.add_theme_constant_override("separation", 4)
 	row.add_child(right)
+	right.add_child(_label("STATUS", GOLD))
+	var stat_row := HBoxContainer.new()
+	stat_row.add_theme_constant_override("separation", 6)
+	stats_label = _label()
+	stats_values = _label("", Color("f8f0c0"))
+	stats_values.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	stats_values.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stat_row.add_child(stats_label)
+	stat_row.add_child(stats_values)
+	right.add_child(stat_row)
 	var coin_row := HBoxContainer.new()
+	coin_row.add_theme_constant_override("separation", 4)
 	var coin := TextureRect.new()
-	coin.texture = Game.icons["coin"]
+	coin.texture = Game.icons["money"]
 	coin_row.add_child(coin)
 	coins_label = _label("", GOLD)
+	coins_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	coin_row.add_child(coins_label)
 	right.add_child(coin_row)
-	right.add_child(_label("STATS", GOLD))
-	stats_label = _label()
-	right.add_child(stats_label)
-	right.add_child(_label("\nClick a tool to hold it\nClick the book for spells", Color(1, 1, 1, 0.6)))
+	right.add_child(_label("Click a tool to hold it\nClick the book: spells", Color(0.8, 0.85, 1.0, 0.75)))
 
 
 func _build_book() -> void:
 	book_panel = PanelContainer.new()
-	book_panel.add_theme_stylebox_override("panel", _box(Color("3a1d5e"), GOLD, 8))
+	book_panel.add_theme_stylebox_override("panel", _window(12))
 	book_panel.visible = false
 	book_panel.gui_input.connect(func(ev: InputEvent):
 		if ev is InputEventMouseButton and ev.pressed:
@@ -265,7 +300,7 @@ func _draw_ring() -> void:
 
 func _build_upgrade() -> void:
 	upgrade_panel = PanelContainer.new()
-	upgrade_panel.add_theme_stylebox_override("panel", _box(Color("3a1d5e"), GOLD, 8))
+	upgrade_panel.add_theme_stylebox_override("panel", _window(12))
 	upgrade_panel.visible = false
 	_centered(upgrade_panel)
 
@@ -280,8 +315,8 @@ func _build_upgrade() -> void:
 	head.add_child(upgrade_title)
 	v.add_child(head)
 
-	var normal := _box(PANEL_BG, Color("5a6ab0"), 2)
-	var hover := _box(SLOT_HOVER, GOLD, 2)
+	var normal := _slot_box("slot")
+	var hover := _slot_box("slot_hover")
 	for i in 3:
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(240, 28)
@@ -350,8 +385,9 @@ func _build_cinema() -> void:
 	fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(fade)
 	title = _label("", Color(0.9, 0.65, 1.0))
-	title.add_theme_font_size_override("font_size", 24)
-	title.add_theme_constant_override("outline_size", 6)
+	title.add_theme_font_size_override("font_size", FONT_SIZE * 2)
+	title.add_theme_constant_override("shadow_offset_x", 2)
+	title.add_theme_constant_override("shadow_offset_y", 2)
 	subtitle = _label("", Color(1, 1, 1, 0.85))
 	for l in [title, subtitle]:
 		l.size = Vector2(SCREEN.x, 30)
@@ -461,11 +497,14 @@ func refresh() -> void:
 		var is_equipped: bool = slot != null and slot["id"] == Game.equipped
 		slots[i].add_theme_stylebox_override("normal", slot_equipped if is_equipped else slot_normal)
 
-	coins_label.text = " %d" % Game.money
-	var lines := PackedStringArray()
+	coins_label.text = "%d G" % Game.money
+	var names := PackedStringArray()
+	var values := PackedStringArray()
 	for s in Game.STAT_ORDER:
-		lines.append("%s   %d" % [s.capitalize(), Game.stat_level(s)])
-	stats_label.text = "\n".join(lines)
+		names.append(s.capitalize())
+		values.append(str(Game.stat_level(s)))
+	stats_label.text = "\n".join(names)
+	stats_values.text = "\n".join(values)
 
 	var book := PackedStringArray(["SPELLBOOK"])
 	for id in Game.SPELL_ORDER:

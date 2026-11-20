@@ -93,7 +93,9 @@ scripts/ui.gd              HUD, inventory, spell ring, spellbook
 scripts/enemy.gd           slime enemy
 scripts/projectile.gd      fireball / mudball
 scripts/fx.gd              impact ring effect
-scripts/pickup.gd          ground pickups: hidden stashes, monster remains
+scripts/pickup.gd          ground pickups: hidden stashes, monster remains, logs/stone
+scripts/cocoon.gd          the cocoon behind the boss
+tools/make_pixel_font.py   hand-drawn SNES-style pixel font (assets/fonts/pixel.fnt)
 scripts/zone.gd            lava / mud puddle / quake ground effects
 scripts/boss.gd            Hive Mantis end boss
 scripts/boss_spit.gd       boss acid spit
