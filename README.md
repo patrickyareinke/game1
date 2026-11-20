@@ -25,18 +25,18 @@ Every game generates a new random 160x160 world. Somewhere on it is a village (f
 | Tool | Harvests | Melee damage |
 |---|---|---|
 | Stick | bushes only | 1.0x |
-| Axe | trees -> 2-4 Wood (3 hits) | 1.3x |
-| Pickaxe | rocks -> 2-3 Stone (3 hits) | 1.1x |
+| Axe | trees -> 2-4 Wood (3 hits; the tree falls, logs land on the ground, pick up with F) | 1.3x |
+| Pickaxe | rocks -> 2-3 Stone (3 hits, pick up with F) | 1.1x |
 
 ## The mountain & the Hive Mantis
 
-At the very top of the map is a mountain: a handful of snowy peaks behind one very big front mountain with the cave mouth at its base. Every map guarantees a walkable route from the village to the cave (rivers get a dirt ford, blocking trees/rocks are cleared). Walk in to enter the boss cave (walk onto the glowing exit to leave).
+At the very top of the map is a mountain: a handful of snowy peaks behind one very big front mountain with the cave mouth at its base. A gravel road leads from the village to the cave on every map (through rivers as a ford). Walk in to enter the boss cave (walk onto the glowing exit to leave).
 
 The **Hive Mantis** guards its heart with a claw cage:
 1. **Burst the cage**: only *Magic Fiststamp* hurts it - 3 fist hits break it open (fireballs and the stick just bounce off).
 2. **Burn the heart**: only *fireballs* damage the exposed heart (30 HP). After 12 s the claws close again.
 
-Entering the cave plays a short intro (fade to black, reveal, roar). Six slimes crawl around the boss room, half of them spit slime. The boss spits acid at you and slams its claws where a red circle appears. If you faint, you wake up at the village fire and the boss heals. Reward: 100 coins, and a visitor who is very happy you won.
+Entering the cave plays a short intro (fade to black, reveal, roar). Six slimes crawl around the boss room, half of them spit slime. The boss spits acid at you and slams its claws where a red circle appears. If you faint, you wake up at the village fire and the boss heals. Reward: 100 coins. Behind the boss hangs a silk cocoon: once the Mantis is dead, burst it with a fireball or Magic Fiststamp (2 hits) to free the girl inside.
 
 ## Stats & spells
 
@@ -110,7 +110,7 @@ Draw your own PNGs with the same size and layout and overwrite the files:
 
 | File | Size | Layout |
 |---|---|---|
-| `tools/player_source.png`, `tools/girl_source.png` | any | character sheets (rows idle, walk, run, attack, hurt, sleep; 10 frames: 0-3 down, 4-6 right, 7-9 up). Run `python tools/import_player_sheet.py` to turn them into `assets/sprites/player_sheet.png` / `girl_sheet.png` (34x34 frames), the HUD face and the blush overlay |
+| `tools/player_source.png`, `tools/girl_source.png` | any | character sheets (rows idle, walk, run, attack, hurt, sleep; 10 frames: 0-3 down, 4-6 right, 7-9 up). Run `python tools/import_player_sheet.py` to turn them into `assets/sprites/player_sheet.png` / `girl_sheet.png` (68x68 textures = 34x34 game pixels at 2x detail), the HUD face and the blush overlay |
 | `assets/tiles/terrain.png` | 640x20 | 16 cells of 40x20, iso diamond 32x16 at offset (4,2). 0-3 grass, 4-5 grass+flowers, 6-7 dirt, 8-9 water, 10-11 mountain rock, 12-13 cave floor, 14-15 cave wall |
 | `assets/sprites/tree.png` | 34x46 | trunk base at (17, 42) |
 | `assets/sprites/bush.png`, `rock.png`, `crate.png`, `stick.png` | see `FOOT` in world.gd | |

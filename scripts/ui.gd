@@ -91,6 +91,8 @@ func _centered(c: Control) -> void:
 func _build_hud() -> void:
 	face = TextureRect.new()
 	face.position = Vector2(SCREEN.x / 2.0 - 8.0, SCREEN.y - 28.0)
+	face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE   # 32x32 texture shown at 16x16
+	face.size = Vector2(16, 16)
 	add_child(face)
 
 	hp_bar = Control.new()

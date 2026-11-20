@@ -4,6 +4,7 @@ extends Node2D
 ## cols 0-3 down, 4-6 right (mirrored for left), 7-9 up).
 
 signal arrived
+signal woke
 
 const SPEED := 45.0
 const DIR_COLS := {"down": [0, 1, 2, 3], "up": [7, 8, 9], "left": [4, 5, 6], "right": [4, 5, 6]}
@@ -13,6 +14,8 @@ var walking := false
 var facing := "down"
 var t := 0.0
 var sprite: Sprite2D
+var wake_t := -1.0              # >= 0 while getting up (sleep frames backwards)
+const WAKE_TIME := 1.6
 
 
 func _ready() -> void:
@@ -21,7 +24,8 @@ func _ready() -> void:
 	sprite.hframes = 10
 	sprite.vframes = 6
 	sprite.centered = false
-	sprite.offset = Vector2(-17, -33)
+	sprite.scale = Vector2(0.5, 0.5)   # 2x detail texture
+	sprite.offset = Vector2(-34, -66)
 	add_child(sprite)
 
 
@@ -35,12 +39,25 @@ func walk_to(p: Vector2) -> void:
 	walking = true
 
 
+func wake_up() -> void:
+	wake_t = 0.0
+
+
 func face(dir: String) -> void:
 	facing = dir
 
 
 func _physics_process(delta: float) -> void:
 	t += delta
+	if wake_t >= 0.0:
+		wake_t += delta
+		var k := clampf(wake_t / WAKE_TIME, 0.0, 0.999)
+		sprite.flip_h = false
+		sprite.frame = 5 * 10 + 7 - int(k * 8.0)     # lying -> sitting -> standing
+		if wake_t >= WAKE_TIME + 0.3:
+			wake_t = -1.0
+			woke.emit()
+		return
 	var row := 0
 	if walking:
 		var to := target - position

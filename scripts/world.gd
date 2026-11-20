@@ -17,7 +17,7 @@ const ARENA := Vector2i(CAVE_X0 + 22, 22)   # arena centre (inside the cave bloc
 const ARENA_R := 9.0
 const CAVE_TINT := Color(0.55, 0.5, 0.65)
 
-enum T { GRASS, DIRT, WATER, ROCK, CAVE, VOID }
+enum T { GRASS, DIRT, WATER, ROCK, CAVE, VOID, ROAD }
 
 const TEX := {
 	"tree": preload("res://assets/sprites/tree.png"),
@@ -213,7 +213,7 @@ func _generate() -> void:
 				t = T.DIRT
 			elif n_water.get_noise_2d(x, y) < -0.28 and not near_village:
 				t = T.WATER
-			elif absf(n_path.get_noise_2d(x, y)) < 0.05:
+			elif absf(n_path.get_noise_2d(x, y)) < 0.03:
 				t = T.DIRT
 			terrain[i] = t
 
@@ -338,13 +338,21 @@ func _ensure_cave_path() -> void:
 	if not found:
 		push_warning("No route to the cave found")
 		return
+	# lay a 2-wide dirt road along the route (fords through water)
 	var idx := gi
 	while idx != -1:
 		var c := Vector2i(idx % GRID_W, idx / GRID_W)
-		if terrain_at(c) == T.WATER:
-			terrain[idx] = T.DIRT
-		if props.has(c):
-			props.erase(c)
+		for w in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(-1, 0)]:
+			var rc: Vector2i = c + w
+			if not in_bounds(rc) or rc.x >= MAP_SIZE:
+				continue
+			var t := terrain_at(rc)
+			if t == T.ROCK or t == T.CAVE:
+				continue
+			if props.has(rc) and props[rc]["type"] in ["hut", "block", "fireplace"]:
+				continue
+			terrain[rc.y * GRID_W + rc.x] = T.ROAD
+			props.erase(rc)
 		idx = parent[idx]
 
 
@@ -505,6 +513,13 @@ func _arrive_in_cave() -> void:
 		for dy in range(-1, 2):
 			for dx in range(-1, 2):
 				props[ARENA + Vector2i(-3 + dx, -3 + dy)] = {"type": "block"}
+	if not Game.girl_freed and cocoon == null:
+		var cc := ARENA + Vector2i(-6, -6)        # behind the boss, against the wall
+		cocoon = preload("res://scripts/cocoon.gd").new()
+		cocoon.world = self
+		cocoon.position = cell_center(cc)
+		entities.add_child(cocoon)
+		props[cc] = {"type": "block"}
 	_fill_arena_slimes()
 	_set_cave_view(true)
 	var cam: Camera2D = player.cam
@@ -595,31 +610,49 @@ func on_boss_killed() -> void:
 			props.erase(ARENA + Vector2i(-3 + dx, -3 + dy))
 	Game.boss["visible"] = false
 	Game.changed.emit()
-	get_tree().create_timer(1.7).timeout.connect(_victory_scene)
+	get_tree().create_timer(2.0).timeout.connect(func():
+		if cocoon:
+			popup(cocoon.position + Vector2(0, -48), "Something moves inside the cocoon...", Color(1, 0.85, 0.95)))
 
 
 var girl: Node2D
+var cocoon: Node2D
 
 
-func _victory_scene() -> void:
-	## She walks in from the exit tunnel, stands on tiptoe, kisses the hero
-	## on the chin, a heart floats up, and he blushes and smiles.
+func on_cocoon_freed(c: Node2D) -> void:
+	props.erase(screen_to_grid(c.position))
+	Game.girl_freed = true
+	_victory_scene(c.position)
+	cocoon = null
+
+
+func _victory_scene(from: Vector2) -> void:
+	## She wakes up in the burst cocoon, walks over, stands on tiptoe and
+	## kisses the hero on the chin; hearts float up, he blushes and smiles.
 	Game.set_cutscene(true)
 	for p in get_tree().get_nodes_in_group("enemy_shots"):
 		p.queue_free()
 	player.dir = player.Dir.DOWN
 	girl = preload("res://scripts/girl.gd").new()
-	girl.position = cell_center(cave_exit + Vector2i(-1, -1))
+	girl.position = from
 	entities.add_child(girl)
+	var cam: Camera2D = player.cam
+	# look at the cocoon while she gets up
+	var tw := create_tween().set_parallel()
+	tw.tween_property(cam, "offset", from + Vector2(0, -16) - player.position, 0.6).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(cam, "zoom", Vector2(2.4, 2.4), 0.6).set_trans(Tween.TRANS_SINE)
+	girl.wake_up()
+	await girl.woke
+
 	var spot: Vector2 = player.position + Vector2(13, 1)
 	if not is_walkable_at(spot):
 		spot = player.position + Vector2(-13, 1)
 	girl.walk_to(spot)
-
-	var cam: Camera2D = player.cam
-	var tw := create_tween().set_parallel()
-	tw.tween_property(cam, "zoom", Vector2(2.6, 2.6), 1.2).set_trans(Tween.TRANS_SINE)
-	tw.tween_property(cam, "offset", Vector2(6, -14), 1.2).set_trans(Tween.TRANS_SINE)
+	# follow her back to the hero
+	tw = create_tween().set_parallel()
+	var walk_time: float = girl.position.distance_to(spot) / girl.SPEED
+	tw.tween_property(cam, "zoom", Vector2(2.6, 2.6), walk_time).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(cam, "offset", Vector2(6, -14), walk_time).set_trans(Tween.TRANS_SINE)
 	await girl.arrived
 
 	var left_of_hero: bool = girl.position.x > player.position.x
@@ -818,13 +851,29 @@ func hit_at(point: Vector2, tool := "stick") -> void:
 					Color(1, 1, 1, 0.85))
 			return
 		props[best]["hp"] = props[best].get("hp", HITS_TO_HARVEST) - 1
+		var pos := cell_center(best)
+		popup(pos + Vector2(0, -30), "Chop!" if type == "tree" else "Clack!", Color(0.95, 0.85, 0.6))
 		if props[best]["hp"] <= 0:
-			var count := rng.randi_range(h[2], h[3])
-			Game.add_item(h[1], count)
-			popup(cell_center(best) + Vector2(0, -30), "+%d %s" % [count, Game.ITEMS[h[1]]["name"]],
-				Color(0.9, 0.8, 0.6))
-			ring_fx(cell_center(best), 14.0, Color(0.9, 0.8, 0.6))
-			_remove_prop(best)
+			var node: Sprite2D = props[best]["node"]
+			props.erase(best)
+			if type == "tree":
+				# timber! the tree tips over away from the player and fades
+				var away := 1.0 if pos.x >= player.position.x else -1.0
+				var tw := create_tween()
+				tw.tween_property(node, "rotation", away * 1.45, 0.55).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+				tw.tween_callback(func(): ring_fx(pos + Vector2(away * 30, -6), 20.0, Color(0.6, 0.5, 0.35), 0.4))
+				tw.tween_property(node, "modulate:a", 0.0, 0.35)
+				tw.tween_callback(node.queue_free)
+				var stump := Sprite2D.new()
+				stump.texture = preload("res://assets/sprites/stump.png")
+				stump.centered = false
+				stump.offset = Vector2(-10, -11)
+				stump.position = pos
+				entities.add_child(stump)
+			else:
+				ring_fx(pos, 14.0, Color(0.7, 0.7, 0.75))
+				node.queue_free()
+			spawn_pickup("drop", h[1], rng.randi_range(h[2], h[3]), 0, best)
 
 
 func _shake(node: Node2D) -> void:

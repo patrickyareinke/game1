@@ -81,6 +81,7 @@ var ui_open := false         # inventory or spell ring visible -> no world click
 var build_mode := false
 var boss := {}               # boss bar info, written by boss.gd
 var boss_defeated := false
+var girl_freed := false
 var cutscene := false       # boss intro: player, enemies and boss wait
 
 
@@ -109,6 +110,7 @@ func reset() -> void:
 	money = 0
 	boss = {}
 	boss_defeated = false
+	girl_freed = false
 	hp = MAX_HP
 	add_item("stick")
 	add_item("axe")

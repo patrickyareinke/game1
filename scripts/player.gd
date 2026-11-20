@@ -54,13 +54,15 @@ func _ready() -> void:
 	sprite.hframes = 10
 	sprite.vframes = 6
 	sprite.centered = false
-	sprite.offset = Vector2(-17, -33)  # feet at this node's position
+	sprite.scale = Vector2(0.5, 0.5)   # 2x detail texture
+	sprite.offset = Vector2(-34, -66)  # feet at this node's position (texture px)
 	add_child(sprite)
 
 	blush = Sprite2D.new()
 	blush.texture = preload("res://assets/sprites/player_blush.png")
 	blush.centered = false
 	blush.offset = sprite.offset
+	blush.scale = sprite.scale
 	blush.visible = false
 	add_child(blush)
 

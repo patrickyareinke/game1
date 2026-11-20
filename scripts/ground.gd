@@ -56,8 +56,8 @@ func _draw() -> void:
 			else:
 				_tile(c, 4 + v % 2 if v < 8 else v % 4)
 	# 2) dirt paths, 3) water
-	for kind in [world.T.DIRT, world.T.WATER]:
-		var base := 6 if kind == world.T.DIRT else 8
+	for kind in [world.T.DIRT, world.T.ROAD, world.T.WATER]:
+		var base: int = {world.T.DIRT: 6, world.T.ROAD: 16, world.T.WATER: 8}[kind]
 		for y in n:
 			for x in n:
 				var c := Vector2i(x, y)

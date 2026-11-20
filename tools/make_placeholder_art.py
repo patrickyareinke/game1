@@ -119,6 +119,7 @@ WATER = [c("23548a"), c("2d68a6"), c("3a7fc0"), c("9fd2ee")]
 WATER5 = [c("1e3450"), c("254262"), c("2d5174"), c("386184"), c("4b7596")]
 ROCK = [c("54504c"), c("6c6862"), c("85807a"), c("a29c94")]
 CAVE = [c("3e3640"), c("4c4450"), c("5a5060"), c("766a78")]
+ROAD5 = [c("6a5a46"), c("7e6c54"), c("948066"), c("a8957a"), c("c0ad90")]
 CAVE_WALL = [c("0c0a10"), c("15111a"), c("1e1924"), c("2a2332")]
 
 
@@ -211,9 +212,16 @@ def overlay_tile(rng, pal, kind):
         for x in range(CELL_W):
             mask[(x, y)] = ragged(x, y, rng)
     m = lambda x, y: mask.get((x, y), False)
-    pal5 = DIRT5 if kind == "dirt" else WATER5
+    pal5 = {"dirt": DIRT5, "road": ROAD5}.get(kind, WATER5)
     fill_field(px, m, pal5, rng, 0.9)
-    if kind == "dirt":  # pebbles with a highlight
+    if kind == "road":  # gravel road: many small light stones
+        for _ in range(12):
+            x, y = rng.randrange(8, 32), rng.randrange(4, 16)
+            if m(x, y) and m(x + 1, y) and m(x, y + 1):
+                px[x, y] = c("d8c8a8")
+                px[x + 1, y] = ROAD5[3]
+                px[x, y + 1] = ROAD5[0]
+    elif kind == "dirt":  # pebbles with a highlight
         for _ in range(4):
             x, y = rng.randrange(9, 31), rng.randrange(5, 15)
             if m(x, y) and m(x + 1, y) and m(x, y + 1):
@@ -233,7 +241,7 @@ def overlay_tile(rng, pal, kind):
 
 def make_terrain():
     rng = random.Random(7)
-    atlas = Image.new("RGBA", (CELL_W * 16, CELL_H))
+    atlas = Image.new("RGBA", (CELL_W * 18, CELL_H))
     tiles = [grass_tile(rng) for _ in range(4)]
     tiles += [grass_tile(rng, flowers=True) for _ in range(2)]
     tiles += [overlay_tile(rng, DIRT, "dirt") for _ in range(2)]
@@ -241,6 +249,7 @@ def make_terrain():
     tiles += [stone_tile(rng, ROCK) for _ in range(2)]
     tiles += [stone_tile(rng, CAVE) for _ in range(2)]
     tiles += [stone_tile(rng, CAVE_WALL) for _ in range(2)]
+    tiles += [overlay_tile(rng, DIRT, "road") for _ in range(2)]
     for i, t in enumerate(tiles):
         atlas.paste(t, (i * CELL_W, 0))
     save(atlas, "tiles", "terrain.png")
@@ -1041,6 +1050,38 @@ def make_heart():
     save(img, "icons", "heart.png")
 
 
+def make_cocoon_and_stump():
+    # silk cocoon stuck to the cave wall, a figure faintly visible inside (26x40)
+    img = Image.new("RGBA", (26, 40))
+    SILK = [c("6a5a6e"), c("8e7e8e"), c("b4a6aa"), c("d6cac4"), c("efe6dc")]
+    shaded_ellipse(img, 13, 22, 11, 17, SILK)
+    d = ImageDraw.Draw(img)
+    # silhouette of someone curled up inside
+    d.ellipse((9, 10, 16, 17), fill=c("8a7480"))
+    d.ellipse((8, 16, 18, 32), fill=c("8a7480"))
+    rng = random.Random(6)
+    for _ in range(14):                       # wrapping strands
+        y = rng.randrange(6, 38)
+        d.arc((2, y - 3, 24, y + 3), 10, 170, fill=c("f6f0e8") if rng.random() < 0.5 else c("9c8c98"))
+    for (x0, y0, x1, y1) in ((13, 5, 8, 0), (13, 5, 19, 0), (4, 20, 0, 14), (22, 22, 25, 16)):
+        d.line((x0, y0, x1, y1), fill=c("d6cac4"))   # threads to the wall
+    d.ellipse((9, 34, 17, 39), fill=c("8a5a9a"))     # slime drip
+    add_outline(img, c("2a2030"))
+    save(shadow(img, 13, 37, 9, 2), "sprites", "cocoon.png")
+
+    # tree stump left after chopping (20x14, foot at (10, 11))
+    img = Image.new("RGBA", (20, 14))
+    d = ImageDraw.Draw(img)
+    d.rectangle((5, 5, 14, 11), fill=c("553a26"))
+    d.rectangle((5, 5, 7, 11), fill=c("6e4e34"))
+    d.line((2, 11, 5, 9), fill=c("553a26")); d.line((14, 9, 17, 11), fill=c("3e2a1c"))
+    d.ellipse((5, 2, 14, 7), fill=c("c8a070"))
+    d.ellipse((7, 3, 12, 6), outline=c("a07848"))
+    d.point((9, 4), fill=c("8a6440"))
+    add_outline(img, c("1a120c"))
+    save(shadow(img, 10, 11, 8, 2), "sprites", "stump.png")
+
+
 if __name__ == "__main__":
     make_terrain()
     make_tree()
@@ -1060,3 +1101,4 @@ if __name__ == "__main__":
     make_boss()
     make_remains()
     make_heart()
+    make_cocoon_and_stump()
