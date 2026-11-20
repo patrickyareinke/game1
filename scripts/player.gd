@@ -13,8 +13,9 @@ const SWING_TIME := 0.22
 const SWING_ARC := deg_to_rad(150.0)
 const REACH := 16.0
 const INVULN_TIME := 1.0
+const BODY_LENGTH := 24.0             # sprite height in world pixels
 const ZOOM := 2.0                    # character shown at double size
-const CAVE_ZOOM := 1.5               # a bit wider in the boss cave
+const CAVE_ZOOM := 1.2               # a bit wider in the boss cave
 
 var world: Node2D
 var dir := Dir.DOWN
@@ -103,10 +104,12 @@ func _physics_process(delta: float) -> void:
 	_update_swing(delta)
 
 	# in the boss cave the camera leans towards the boss so both are on screen
-	var cam_target := Vector2.ZERO
+	# character sits one body length below the screen centre
+	var cam_target := Vector2(0, -BODY_LENGTH)
 	if world.in_cave and world.boss and not world.boss.dead:
 		cam_target = ((world.boss.position + Vector2(0, -40)) - position) * 0.5
 		cam_target = cam_target.limit_length(110.0)
+		cam_target.y = maxf(cam_target.y, -BODY_LENGTH * 2.5)   # never down into the HUD
 	cam.offset = cam.offset.lerp(cam_target, minf(1.0, delta * 5.0))
 	var z := CAVE_ZOOM if world.in_cave else ZOOM
 	cam.zoom = cam.zoom.lerp(Vector2(z, z), minf(1.0, delta * 4.0))
