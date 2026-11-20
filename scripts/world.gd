@@ -35,7 +35,7 @@ const TEX := {
 }
 # Sprite offsets so that the image's "foot point" sits on the cell centre.
 const FOOT := {
-	"tree": Vector2(-17, -42),
+	"tree": Vector2(-28, -73),
 	"bush": Vector2(-10, -14),
 	"rock": Vector2(-9, -11),
 	"crate": Vector2(-17, -25),
@@ -595,6 +595,80 @@ func on_boss_killed() -> void:
 			props.erase(ARENA + Vector2i(-3 + dx, -3 + dy))
 	Game.boss["visible"] = false
 	Game.changed.emit()
+	get_tree().create_timer(1.7).timeout.connect(_victory_scene)
+
+
+var girl: Node2D
+
+
+func _victory_scene() -> void:
+	## She walks in from the exit tunnel, stands on tiptoe, kisses the hero
+	## on the chin, a heart floats up, and he blushes and smiles.
+	Game.set_cutscene(true)
+	for p in get_tree().get_nodes_in_group("enemy_shots"):
+		p.queue_free()
+	player.dir = player.Dir.DOWN
+	girl = preload("res://scripts/girl.gd").new()
+	girl.position = cell_center(cave_exit + Vector2i(-1, -1))
+	entities.add_child(girl)
+	var spot: Vector2 = player.position + Vector2(13, 1)
+	if not is_walkable_at(spot):
+		spot = player.position + Vector2(-13, 1)
+	girl.walk_to(spot)
+
+	var cam: Camera2D = player.cam
+	var tw := create_tween().set_parallel()
+	tw.tween_property(cam, "zoom", Vector2(2.6, 2.6), 1.2).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(cam, "offset", Vector2(6, -14), 1.2).set_trans(Tween.TRANS_SINE)
+	await girl.arrived
+
+	var left_of_hero: bool = girl.position.x > player.position.x
+	girl.face("left" if left_of_hero else "right")
+	var s: Sprite2D = girl.sprite
+	tw = create_tween()
+	tw.tween_interval(0.5)
+	# on tiptoe, leaning in towards his chin
+	var lean := Vector2(-3 if left_of_hero else 3, -4)
+	tw.tween_property(s, "position", lean, 0.3).set_trans(Tween.TRANS_SINE)
+	tw.tween_callback(_kiss_heart)
+	tw.tween_interval(0.45)
+	tw.tween_property(s, "position", Vector2.ZERO, 0.3).set_trans(Tween.TRANS_SINE)
+	tw.tween_interval(0.3)
+	# he blushes and smiles
+	tw.tween_callback(func():
+		player.blush.modulate.a = 0.0
+		player.blush.visible = true)
+	tw.tween_property(player.blush, "modulate:a", 1.0, 0.6)
+	tw.tween_interval(1.8)
+	var z: float = player.CAVE_ZOOM
+	tw.set_parallel()
+	tw.tween_property(cam, "zoom", Vector2(z, z), 1.0).set_trans(Tween.TRANS_CUBIC)
+	tw.tween_property(cam, "offset", Vector2.ZERO, 1.0).set_trans(Tween.TRANS_CUBIC)
+	tw.set_parallel(false)
+	tw.tween_callback(func(): Game.set_cutscene(false))
+	tw.tween_interval(3.0)
+	tw.tween_property(player.blush, "modulate:a", 0.0, 1.5)
+	tw.tween_callback(func(): player.blush.visible = false)
+
+
+func _kiss_heart() -> void:
+	var chin: Vector2 = player.position + Vector2(0, -20)
+	for i in 3:
+		var h := Sprite2D.new()
+		h.texture = preload("res://assets/icons/heart.png")
+		h.z_index = 60
+		h.position = chin + Vector2(i * 4 - 4, 0)
+		h.scale = Vector2.ONE * (1.0 if i == 1 else 0.6)
+		h.modulate.a = 0.0
+		add_child(h)
+		var tw := create_tween()
+		tw.tween_interval(i * 0.15)
+		tw.tween_property(h, "modulate:a", 1.0, 0.15)
+		tw.parallel().tween_property(h, "position", h.position + Vector2((i - 1) * 6, -26), 1.4) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(h, "scale", h.scale * 1.4, 1.4)
+		tw.tween_property(h, "modulate:a", 0.0, 0.4)
+		tw.tween_callback(h.queue_free)
 
 
 func spawn_spit(from: Vector2, to: Vector2, col := Color(0.6, 0.95, 0.2), spd := 110.0) -> void:

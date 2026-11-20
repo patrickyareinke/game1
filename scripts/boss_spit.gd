@@ -12,6 +12,10 @@ var color := Color(0.6, 0.95, 0.2)
 var speed := SPEED
 
 
+func _ready() -> void:
+	add_to_group("enemy_shots")
+
+
 func setup(w: Node2D, from: Vector2, to: Vector2, col := Color(0.6, 0.95, 0.2), spd := SPEED) -> void:
 	world = w
 	position = from

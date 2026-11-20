@@ -9,7 +9,7 @@ Isometric 2D building & survival game in SNES-style pixel art, made with **Godot
 3. Press **F5**
 
 Controls:
-- **WASD**: walk
+- **WASD**: walk (hold **Shift** to run)
 - **Left click**: swing stick toward the mouse (hits slimes, cuts bushes, shakes trees)
 - **Right click**: cast the active spell toward the mouse
 - **Q**: spell ring (pick Fireball, Mudball or Magic Fiststamp; or press 1/2/3)
@@ -36,7 +36,7 @@ The **Hive Mantis** guards its heart with a claw cage:
 1. **Burst the cage**: only *Magic Fiststamp* hurts it - 3 fist hits break it open (fireballs and the stick just bounce off).
 2. **Burn the heart**: only *fireballs* damage the exposed heart (30 HP). After 12 s the claws close again.
 
-Entering the cave plays a short intro (fade to black, reveal, roar). Six slimes crawl around the boss room, half of them spit slime. The boss spits acid at you and slams its claws where a red circle appears. If you faint, you wake up at the village fire and the boss heals. Reward: 100 coins.
+Entering the cave plays a short intro (fade to black, reveal, roar). Six slimes crawl around the boss room, half of them spit slime. The boss spits acid at you and slams its claws where a red circle appears. If you faint, you wake up at the village fire and the boss heals. Reward: 100 coins, and a visitor who is very happy you won.
 
 ## Stats & spells
 
@@ -86,7 +86,8 @@ project.godot              settings: 480x270 pixel view scaled 3x, sharp pixels
 scenes/main.tscn           main scene (Main node with world.gd)
 scripts/world.gd           map generation, props, building, collision
 scripts/ground.gd          draws the terrain (no grid lines)
-scripts/player.gd          character: movement, stick, spells, HP
+scripts/player.gd          character: movement, animations, stick, spells, HP
+scripts/girl.gd            the girl in the victory scene
 scripts/game_state.gd      autoload "Game": inventory, coins, stats, spells
 scripts/ui.gd              HUD, inventory, spell ring, spellbook
 scripts/enemy.gd           slime enemy
@@ -109,7 +110,7 @@ Draw your own PNGs with the same size and layout and overwrite the files:
 
 | File | Size | Layout |
 |---|---|---|
-| `assets/sprites/player.png` | 72x104 | 4x4 frames of 18x26. Rows: down, up, left, right. Columns: walk cycle. Feet at (9, 24) in each frame |
+| `tools/player_source.png`, `tools/girl_source.png` | any | character sheets (rows idle, walk, run, attack, hurt, sleep; 10 frames: 0-3 down, 4-6 right, 7-9 up). Run `python tools/import_player_sheet.py` to turn them into `assets/sprites/player_sheet.png` / `girl_sheet.png` (34x34 frames), the HUD face and the blush overlay |
 | `assets/tiles/terrain.png` | 640x20 | 16 cells of 40x20, iso diamond 32x16 at offset (4,2). 0-3 grass, 4-5 grass+flowers, 6-7 dirt, 8-9 water, 10-11 mountain rock, 12-13 cave floor, 14-15 cave wall |
 | `assets/sprites/tree.png` | 34x46 | trunk base at (17, 42) |
 | `assets/sprites/bush.png`, `rock.png`, `crate.png`, `stick.png` | see `FOOT` in world.gd | |

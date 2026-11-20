@@ -112,11 +112,11 @@ def shaded_ellipse(img, cx, cy, rx, ry, pal, light=(-0.5, -0.65, 0.6), boost=0.0
 # ---------------------------------------------------------------------------
 CELL_W, CELL_H = 40, 20
 GRASS = [c("3f7d2b"), c("4e9632"), c("5fad3b"), c("7cc84a")]
-GRASS5 = [c("2f6a30"), c("3f8434"), c("55a03a"), c("6fb944"), c("8fcf52")]
+GRASS5 = [c("26402a"), c("31532f"), c("3f6635"), c("50783c"), c("6a8c48")]
 DIRT = [c("6b4f2c"), c("86653a"), c("9e7c4a"), c("b8955e")]
-DIRT5 = [c("5e4228"), c("77573a"), c("8f6d48"), c("a88559"), c("c29f70")]
+DIRT5 = [c("4a3628"), c("5d4532"), c("72573e"), c("886b4c"), c("a0835f")]
 WATER = [c("23548a"), c("2d68a6"), c("3a7fc0"), c("9fd2ee")]
-WATER5 = [c("1d4a86"), c("255d9e"), c("2f72b4"), c("3f88c8"), c("5aa2d8")]
+WATER5 = [c("1e3450"), c("254262"), c("2d5174"), c("386184"), c("4b7596")]
 ROCK = [c("54504c"), c("6c6862"), c("85807a"), c("a29c94")]
 CAVE = [c("3e3640"), c("4c4450"), c("5a5060"), c("766a78")]
 CAVE_WALL = [c("0c0a10"), c("15111a"), c("1e1924"), c("2a2332")]
@@ -179,7 +179,7 @@ def stone_tile(rng, pal):
 
 def grass_blade(px, x, y, m):
     """Tiny 'v' grass tuft: two light tips over a dark root."""
-    pts = [(x - 1, y - 1, GRASS5[4]), (x + 1, y - 1, GRASS5[4]), (x, y, GRASS5[3]), (x, y + 1, GRASS5[0])]
+    pts = [(x - 1, y - 1, c("7d9c56")), (x + 1, y - 1, c("7d9c56")), (x, y, GRASS5[3]), (x, y + 1, GRASS5[0])]
     if all(m(a, b) for a, b, _ in pts):
         for a, b, col in pts:
             px[a, b] = col
@@ -195,10 +195,10 @@ def grass_tile(rng, flowers=False):
     if flowers:
         for _ in range(3):
             x, y = rng.randrange(9, 31), rng.randrange(4, 14)
-            col = rng.choice([c("fbf6e8"), c("f6d850"), c("f09ac0"), c("a8c8ff")])
+            col = rng.choice([c("e8e0cc"), c("d8b850"), c("c88aa0"), c("98aac8")])
             if m(x, y) and m(x + 1, y) and m(x, y + 1):
                 px[x, y] = col
-                px[x + 1, y] = c("fffbe0") if col != c("f6d850") else c("fff2a0")
+                px[x + 1, y] = c("f0ead8")
                 px[x, y + 1] = GRASS5[0]
     return img
 
@@ -226,8 +226,8 @@ def overlay_tile(rng, pal, kind):
             n = rng.randrange(2, 4)
             if all(m(x + i, y) for i in range(n + 1)):
                 for i in range(n):
-                    px[x + i, y] = c("8cc4ec")
-                px[x + n, y] = c("e8f6ff")
+                    px[x + i, y] = c("6a90b0")
+                px[x + n, y] = c("b8d0e0")
     return img
 
 
@@ -256,32 +256,47 @@ def shadow(img, cx, cy, rx, ry):
     return Image.alpha_composite(sh, img)
 
 
-LEAF = [c("1c4a24"), c("27612a"), c("357a30"), c("4a9636"), c("67b443"), c("8fd25a")]
+LEAF = [c("162a1c"), c("1f3a24"), c("2b4c2c"), c("3b6234"), c("53793e"), c("74944e")]
 
 
 def make_tree():
-    img = Image.new("RGBA", (34, 46))
+    W, H = 56, 78
+    img = Image.new("RGBA", (W, H))
     d = ImageDraw.Draw(img)
-    # trunk with bark shading and roots
-    for x in range(14, 20):
-        tone = [c("8a5a30"), c("7a4e28"), c("6b4423"), c("6b4423"), c("553418"), c("452a12")][x - 14]
-        d.line((x, 26, x, 42), fill=tone)
-    d.point([(15, 32), (16, 36), (17, 30), (18, 38)], fill=c("452a12"))
-    d.line((11, 42, 14, 40), fill=c("6b4423")); d.line((20, 40, 23, 42), fill=c("553418"))
-    d.line((12, 42, 22, 42), fill=c("553418"))
-    # canopy: back balls darker, front balls lit
-    for (x, y, r, boost) in [(24, 22, 7, -0.15), (9, 22, 7, -0.15), (17, 25, 8, -0.1),
-                             (17, 14, 11, 0.0), (8, 17, 6, 0.0), (26, 16, 6, 0.0),
-                             (13, 10, 6, 0.08), (22, 9, 5, 0.08)]:
-        shaded_ellipse(img, x, y, r, r * 0.92, LEAF, boost=boost)
+    cx = 28
+    BARK = [c("2a1c14"), c("3e2a1c"), c("553a26"), c("6e4e34"), c("86664a")]
+    # trunk: shaded cylinder with bark grooves, flared roots
+    for x in range(cx - 5, cx + 5):
+        v = 1.0 - abs(x + 0.5 - (cx - 1.5)) / 6.0
+        for y in range(40, 74):
+            d.point((x, y), fill=dither_pick(BARK, 0.2 + 0.7 * v, x, y))
+    rng = random.Random(4)
+    for _ in range(9):
+        x, y = rng.randrange(cx - 4, cx + 4), rng.randrange(44, 70)
+        d.line((x, y, x, y + rng.randrange(2, 5)), fill=BARK[0])
+    for (x0, x1, y0) in ((cx - 10, cx - 4, 74), (cx + 3, cx + 10, 74)):
+        d.polygon([(x0, y0), (x1, y0 - 6), (x1, y0)], fill=BARK[2])
+    d.line((cx - 11, 74, cx + 11, 74), fill=BARK[1])
+    # branches peeking out under the canopy
+    d.line((cx - 2, 46, cx - 12, 38), fill=BARK[2], width=2)
+    d.line((cx + 2, 44, cx + 13, 36), fill=BARK[1], width=2)
+    # canopy: many leaf clusters, back (darker) to front (lit)
+    clusters = [(cx - 15, 34, 10, -0.2), (cx + 15, 34, 10, -0.2), (cx, 38, 12, -0.15),
+                (cx - 18, 24, 10, -0.05), (cx + 17, 23, 10, -0.05), (cx, 22, 15, 0.0),
+                (cx - 9, 13, 10, 0.06), (cx + 9, 12, 10, 0.06), (cx, 8, 8, 0.12),
+                (cx - 6, 31, 9, 0.02), (cx + 8, 31, 9, 0.0)]
+    for (x, y, r, boost) in clusters:
+        shaded_ellipse(img, x, y, r, r * 0.88, LEAF, boost=boost)
     px = img.load()
-    rng = random.Random(3)
-    for _ in range(22):  # leaf sparkle / depth specks
-        x, y = rng.randrange(4, 30), rng.randrange(3, 28)
-        if px[x, y][3]:
-            px[x, y] = LEAF[5] if y < 14 and rng.random() < 0.7 else LEAF[0]
-    add_outline(img, c("143018"))
-    save(shadow(img, 17, 42, 11, 3), "sprites", "tree.png")
+    for _ in range(80):  # leaf texture: tiny lit / shadow leaves
+        x, y = rng.randrange(6, W - 6), rng.randrange(2, 44)
+        if px[x, y][3] and px[x, y][:3] not in [BARK[i][:3] for i in range(5)]:
+            lit = y < 26 and x < cx + 6
+            px[x, y] = LEAF[5] if (lit and rng.random() < 0.6) else LEAF[0]
+            if lit and x + 1 < W and px[x + 1, y][3]:
+                px[x + 1, y] = LEAF[4]
+    add_outline(img, c("101810"))
+    save(shadow(img, cx, 73, 18, 4), "sprites", "tree.png")
 
 
 def make_bush():
@@ -299,9 +314,9 @@ def make_bush():
 def make_rock():
     img = Image.new("RGBA", (18, 14))
     d = ImageDraw.Draw(img)
-    d.ellipse((1, 2, 16, 12), fill=c("6e6e7c"))
-    d.ellipse((2, 2, 13, 9), fill=c("8e8e9c"))
-    d.ellipse((4, 3, 9, 6), fill=c("b4b4c2"))
+    d.ellipse((1, 2, 16, 12), fill=c("5e5c62"))
+    d.ellipse((2, 2, 13, 9), fill=c("7a7880"))
+    d.ellipse((4, 3, 9, 6), fill=c("9c9aa0"))
     d.line((10, 8, 13, 10), fill=c("55555f"))
     add_outline(img)
     save(shadow(img, 9, 12, 7, 2), "sprites", "rock.png")
@@ -770,28 +785,36 @@ def make_village():
     top, right, bottom, left = (cx, T), (cx + 32, T + 16), (cx, T + 32), (cx - 32, T + 16)
     wall = 18
     up = lambda p, h: (p[0], p[1] - h)
-    d.polygon([left, bottom, up(bottom, wall), up(left, wall)], fill=c("8a6a44"))
-    d.polygon([bottom, right, up(right, wall), up(bottom, wall)], fill=c("6e5232"))
+    d.polygon([left, bottom, up(bottom, wall), up(left, wall)], fill=c("6e5640"))
+    d.polygon([bottom, right, up(right, wall), up(bottom, wall)], fill=c("54402c"))
     for i in range(1, 4):  # planks
-        d.line((left[0], left[1] - i * 5, bottom[0], bottom[1] - i * 5), fill=c("6e5232"))
-        d.line((bottom[0], bottom[1] - i * 5, right[0], right[1] - i * 5), fill=c("5a4228"))
+        d.line((left[0], left[1] - i * 5, bottom[0], bottom[1] - i * 5), fill=c("54402c"))
+        d.line((bottom[0], bottom[1] - i * 5, right[0], right[1] - i * 5), fill=c("3e2e20"))
     # door (left wall) and window (right wall)
     d.polygon([(cx - 18, T + 25), (cx - 10, T + 29), (cx - 10, T + 16), (cx - 18, T + 12)], fill=c("3e2a18"))
-    d.polygon([(cx + 12, T + 20), (cx + 20, T + 16), (cx + 20, T + 9), (cx + 12, T + 13)], fill=c("f8d070"))
+    d.polygon([(cx + 12, T + 20), (cx + 20, T + 16), (cx + 20, T + 9), (cx + 12, T + 13)], fill=c("e8b860"))
     d.line((cx + 16, T + 11, cx + 16, T + 18), fill=c("5a4228"))
     # roof
     e = 3
     l2, b2, r2 = (left[0] - e, left[1] - wall), (bottom[0], bottom[1] - wall + e), (right[0] + e, right[1] - wall)
     apex = (cx, T + 16 - wall - 24)
-    d.polygon([l2, b2, apex], fill=c("d4aa58"))
-    d.polygon([b2, r2, apex], fill=c("a87e3a"))
+    d.polygon([l2, b2, apex], fill=c("a48650"))
+    d.polygon([b2, r2, apex], fill=c("765c36"))
     for i in range(1, 5):  # thatch lines
         k = i / 5
         d.line((l2[0] + (apex[0] - l2[0]) * k, l2[1] + (apex[1] - l2[1]) * k,
-                b2[0] + (apex[0] - b2[0]) * k, b2[1] + (apex[1] - b2[1]) * k), fill=c("b08a44"))
+                b2[0] + (apex[0] - b2[0]) * k, b2[1] + (apex[1] - b2[1]) * k), fill=c("86683c"))
         d.line((b2[0] + (apex[0] - b2[0]) * k, b2[1] + (apex[1] - b2[1]) * k,
-                r2[0] + (apex[0] - r2[0]) * k, r2[1] + (apex[1] - r2[1]) * k), fill=c("8a6430"))
-    add_outline(img)
+                r2[0] + (apex[0] - r2[0]) * k, r2[1] + (apex[1] - r2[1]) * k), fill=c("5a4428"))
+    tex = random.Random(9)
+    hp = img.load()
+    for _ in range(420):                       # straw strands and wood grain
+        x, y = tex.randrange(W), tex.randrange(H)
+        r, g, b, al = hp[x, y]
+        if al and (r, g, b) not in ((232, 184, 96), (62, 42, 24)):
+            k = tex.choice((-18, -10, 12))
+            hp[x, y] = (max(0, min(255, r + k)), max(0, min(255, g + k)), max(0, min(255, b + k)), al)
+    add_outline(img, c("1a120c"))
     save(shadow(img, cx, T + 18, 30, 14), "sprites", "hut.png")
 
     # Fireplace: stone ring with logs and 3 animated flame frames (24x28 each)
@@ -1008,6 +1031,16 @@ def make_remains():
         save(img, "sprites", "remains_" + kind + ".png")
 
 
+def make_heart():
+    img = Image.new("RGBA", (11, 10)); d = ImageDraw.Draw(img)
+    d.ellipse((1, 1, 5, 5), fill=c("e8304a")); d.ellipse((5, 1, 9, 5), fill=c("e8304a"))
+    d.polygon([(1, 4), (9, 4), (5, 8)], fill=c("e8304a"))
+    d.point([(5, 7), (3, 5), (7, 5)], fill=c("b01830"))
+    d.point([(3, 2), (2, 3)], fill=c("ffc0d0"))
+    add_outline(img, c("5a0a1a"))
+    save(img, "icons", "heart.png")
+
+
 if __name__ == "__main__":
     make_terrain()
     make_tree()
@@ -1015,11 +1048,9 @@ if __name__ == "__main__":
     make_rock()
     make_crate()
     make_stick()
-    make_player()
     make_icons()
     make_slimes()
     make_projectiles()
-    make_faces()
     make_slap()
     make_upgrade_icons()
     make_tools_and_materials()
@@ -1028,3 +1059,4 @@ if __name__ == "__main__":
     make_big_mountain()
     make_boss()
     make_remains()
+    make_heart()
