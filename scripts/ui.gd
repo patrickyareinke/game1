@@ -37,6 +37,9 @@ var upgrade_icons: Array[TextureRect] = []
 var upgrade_icon: TextureRect
 var pending_upgrades: Array[String] = []
 var upgrade_spell := ""
+var fade: ColorRect              # full-screen black for the cave intro
+var title: Label
+var subtitle: Label
 
 
 func _ready() -> void:
@@ -46,6 +49,7 @@ func _ready() -> void:
 	_build_book()
 	_build_ring()
 	_build_upgrade()
+	_build_cinema()
 	Game.changed.connect(refresh)
 	Game.upgrade_ready.connect(_on_upgrade_ready)
 	refresh()
@@ -332,6 +336,42 @@ func _on_upgrade_chosen(i: int) -> void:
 	_show_next_upgrade()
 
 
+# --- cinematic -------------------------------------------------------------
+
+func _build_cinema() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 10                  # above the HUD
+	add_child(layer)
+	fade = ColorRect.new()
+	fade.color = Color(0, 0, 0, 0)
+	fade.size = SCREEN
+	fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(fade)
+	title = _label("", Color(0.9, 0.65, 1.0))
+	title.add_theme_font_size_override("font_size", 24)
+	title.add_theme_constant_override("outline_size", 6)
+	subtitle = _label("", Color(1, 1, 1, 0.85))
+	for l in [title, subtitle]:
+		l.size = Vector2(SCREEN.x, 30)
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.modulate.a = 0.0
+		layer.add_child(l)
+	title.position = Vector2(0, SCREEN.y - 78)
+	subtitle.position = Vector2(0, SCREEN.y - 50)
+
+
+func show_title(big: String, small: String, hold: float) -> void:
+	title.text = big
+	subtitle.text = small
+	var tw := create_tween().set_parallel()
+	for l in [title, subtitle]:
+		l.modulate.a = 0.0
+		tw.tween_property(l, "modulate:a", 1.0, 0.25)
+	tw.chain().tween_interval(hold)
+	tw.chain().tween_property(title, "modulate:a", 0.0, 0.4)
+	tw.parallel().tween_property(subtitle, "modulate:a", 0.0, 0.4)
+
+
 # --- input -----------------------------------------------------------------
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -399,7 +439,9 @@ func refresh() -> void:
 	face.texture = Game.icons["face_hurt"] if Game.hp <= 3 else Game.icons["face"]
 	hp_bar.queue_redraw()
 	build_label.visible = Game.build_mode
-	boss_box.visible = Game.boss.get("visible", false)
+	for n in [face, hp_bar, tool_icon]:
+		n.visible = not Game.cutscene
+	boss_box.visible = Game.boss.get("visible", false) and not Game.cutscene
 	if boss_box.visible:
 		if Game.boss["open"]:
 			boss_status.text = "Cage open! Burn the heart with fire!"

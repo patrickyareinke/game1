@@ -14,7 +14,7 @@ Controls:
 - **Right click**: cast the active spell toward the mouse
 - **Q**: spell ring (pick Fireball, Mudball or Magic Fiststamp; or press 1/2/3)
 - **E**: inventory (5x8) with coins and stats; click the spellbook to read your spells
-- **F**: collect water when standing next to a pond
+- **F**: pick up what lies at your feet (hidden stash, monster remains), otherwise scoop water at a pond
 - **Mouse wheel**: switch tool (stick / axe / pickaxe), or click a tool in the inventory
 - **B**: toggle build mode (left click places a crate, right click removes it)
 
@@ -36,7 +36,7 @@ The **Hive Mantis** guards its heart with a claw cage:
 1. **Burst the cage**: only *Magic Fiststamp* hurts it - 3 fist hits break it open (fireballs and the stick just bounce off).
 2. **Burn the heart**: only *fireballs* damage the exposed heart (30 HP). After 12 s the claws close again.
 
-It spits acid at you and slams its claws where a red circle appears. If you faint, you wake up at the village fire and the boss heals. Reward: 100 coins.
+Entering the cave plays a short intro (fade to black, reveal, roar). Six slimes crawl around the boss room, half of them spit slime. The boss spits acid at you and slams its claws where a red circle appears. If you faint, you wake up at the village fire and the boss heals. Reward: 100 coins.
 
 ## Stats & spells
 
@@ -75,7 +75,9 @@ You start with 20 of each ingredient. More come from:
   - Water Slime (blue): slow, 4.5 HP
 - Burning bushes with a fireball (2 Ash), pressing F at a pond (1 Water)
 
-400 invisible stashes are hidden next to trees (oil), rocks and bushes (ash) and ponds (water). Walk over one to find it.
+400 hidden stashes lie next to trees (oil), rocks and bushes (ash) and ponds (water), each marked only by a very faint tile-shaped ring. Stand on it and press F.
+
+Killed slimes leave remains (a goo splat with their ingredient and some coins) on their tile; press F there to collect, and the remains disappear.
 
 ## Folder layout
 
@@ -90,6 +92,7 @@ scripts/ui.gd              HUD, inventory, spell ring, spellbook
 scripts/enemy.gd           slime enemy
 scripts/projectile.gd      fireball / mudball
 scripts/fx.gd              impact ring effect
+scripts/pickup.gd          ground pickups: hidden stashes, monster remains
 scripts/zone.gd            lava / mud puddle / quake ground effects
 scripts/boss.gd            Hive Mantis end boss
 scripts/boss_spit.gd       boss acid spit

@@ -75,7 +75,7 @@ func _physics_process(delta: float) -> void:
 
 	var player: Node2D = world.player
 	var dist := player.position.distance_to(position)
-	if not world.in_cave or dist > AGGRO_RANGE:
+	if not world.in_cave or dist > AGGRO_RANGE or Game.cutscene:
 		return
 	spit_t -= delta
 	slam_t -= delta

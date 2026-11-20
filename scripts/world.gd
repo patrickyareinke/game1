@@ -57,7 +57,8 @@ const HITS_TO_HARVEST := 3
 var terrain := PackedByteArray()   # T per cell, index = y * GRID_W + x
 var variant := PackedByteArray()   # random 0..99 per cell for tile variety
 var props := {}                    # Vector2i -> { "type": String, "node": Sprite2D }
-var stashes := {}                  # Vector2i -> { "id": String, "count": int } (invisible)
+var pickups: Array = []            # pickup.gd nodes: hidden stashes and monster remains
+var pickup_layer := Node2D.new()
 var village := Vector2i.ZERO       # fireplace cell
 var fire: Sprite2D
 var anim_time := 0.0
@@ -65,7 +66,7 @@ var hint_cooldown := 0.0
 var mountain := Vector2i.ZERO      # mountain centre
 var cave_entrance := Vector2i.ZERO # step here (overworld) -> into the cave
 var mountain_exit := Vector2i.ZERO # where you come out again
-var arena_arrival := ARENA + Vector2i(8, 8)
+var arena_arrival := ARENA + Vector2i(5, 5)
 var cave_exit := ARENA + Vector2i(11, 11)
 var mountain_decor: Array = []    # [Sprite2D, keep_visible_in_cave]
 var in_cave := false
@@ -97,6 +98,8 @@ func _ready() -> void:
 	entities = Node2D.new()
 	entities.y_sort_enabled = true      # things lower on screen draw in front
 	add_child(entities)
+	pickup_layer.z_index = -3           # on the ground, under people and props
+	add_child(pickup_layer)
 
 	for cell in props:
 		_spawn_prop_node(cell)
@@ -454,7 +457,6 @@ func _build_mountain_decor() -> void:
 
 func on_player_cell(cell: Vector2i) -> void:
 	## Called by the player on every new tile.
-	check_hidden(cell)
 	if cell == cave_entrance and not in_cave:
 		enter_cave()
 	elif cell == cave_exit and in_cave:
@@ -473,6 +475,26 @@ func _set_cave_view(on: bool) -> void:
 
 
 func enter_cave() -> void:
+	## Dramatic entry: slow fade to black, a long moment of darkness, then a
+	## sudden cut to the boss with a zoomed, tilted camera, a roar, and back.
+	if Game.cutscene:
+		return
+	Game.set_cutscene(true)
+	var boss_alive := not Game.boss_defeated
+	var tw := create_tween()
+	tw.tween_property(ui.fade, "color:a", 1.0, 0.9 if boss_alive else 0.4) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	tw.tween_callback(_arrive_in_cave)
+	if boss_alive:
+		tw.tween_interval(1.8)               # hold the black a little longer
+		tw.tween_callback(_boss_reveal)
+	else:
+		tw.tween_interval(0.3)
+		tw.tween_property(ui.fade, "color:a", 0.0, 0.4)
+		tw.tween_callback(func(): Game.set_cutscene(false))
+
+
+func _arrive_in_cave() -> void:
 	player.position = cell_center(arena_arrival)
 	player.last_cell = arena_arrival
 	if boss == null and not Game.boss_defeated:
@@ -483,8 +505,72 @@ func enter_cave() -> void:
 		for dy in range(-1, 2):
 			for dx in range(-1, 2):
 				props[ARENA + Vector2i(-3 + dx, -3 + dy)] = {"type": "block"}
+	_fill_arena_slimes()
 	_set_cave_view(true)
-	popup(player.position + Vector2(0, -40), "The Hive", Color(0.85, 0.6, 1.0))
+	var cam: Camera2D = player.cam
+	cam.offset = Vector2.ZERO
+	cam.rotation = 0.0
+	var z: float = player.CAVE_ZOOM
+	cam.zoom = Vector2(z, z)
+
+
+func _fill_arena_slimes() -> void:
+	## Slimes crawling around the boss room; about half of them spit.
+	const ARENA_SLIMES := 6
+	var have := get_tree().get_nodes_in_group("arena_slimes").size()
+	var cells := []
+	for dy in range(-int(ARENA_R), int(ARENA_R) + 1):
+		for dx in range(-int(ARENA_R), int(ARENA_R) + 1):
+			var c := ARENA + Vector2i(dx, dy)
+			if terrain_at(c) == T.CAVE and is_walkable_cell(c) \
+					and Vector2(c).distance_to(Vector2(ARENA + Vector2i(-3, -3))) > 4.0 \
+					and Vector2(c).distance_to(Vector2(arena_arrival)) > 5.0:
+				cells.append(c)
+	cells.shuffle()
+	for i in range(have, ARENA_SLIMES):
+		if cells.is_empty():
+			return
+		var e := ENEMY_SCRIPT.new()
+		e.world = self
+		e.kind = ["oil", "ash", "water"][rng.randi_range(0, 2)]
+		e.spitter = i % 2 == 0
+		e.position = cell_center(cells.pop_back())
+		e.add_to_group("arena_slimes")
+		entities.add_child(e)
+
+
+func _boss_reveal() -> void:
+	var cam: Camera2D = player.cam
+	var focus: Vector2 = boss.position + Vector2(0, -40) - player.position
+	ui.fade.color.a = 0.0                        # sudden cut back to the light
+	cam.offset = focus + Vector2(-30, 10)
+	cam.zoom = Vector2(3.1, 3.1)
+	cam.rotation = -0.09
+	var tw := create_tween()
+	# slow drifting push-in with the camera swinging across (perspective shift)
+	tw.set_parallel()
+	tw.tween_property(cam, "offset", focus + Vector2(20, -6), 1.6).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(cam, "rotation", 0.07, 1.6).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(cam, "zoom", Vector2(2.5, 2.5), 1.6).set_trans(Tween.TRANS_SINE)
+	tw.set_parallel(false)
+	# the roar: snap in, title card, shake
+	tw.tween_callback(func():
+		ring_fx(boss.position + Vector2(0, -30), 70.0, Color(0.9, 0.5, 1.0), 0.6)
+		ui.show_title("HIVE MANTIS", "Guardian of the Hive", 1.2))
+	tw.tween_property(cam, "zoom", Vector2(2.9, 2.9), 0.12).set_trans(Tween.TRANS_BACK)
+	tw.tween_property(cam, "rotation", -0.03, 0.12)
+	for i in 8:
+		var k := 6.0 * (1.0 - i / 8.0)
+		tw.tween_property(cam, "offset", focus + Vector2(randf_range(-k, k), randf_range(-k, k)), 0.05)
+	tw.tween_interval(1.0)
+	# back to the player
+	var z: float = player.CAVE_ZOOM
+	tw.set_parallel()
+	tw.tween_property(cam, "offset", Vector2.ZERO, 0.9).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_property(cam, "zoom", Vector2(z, z), 0.9).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_property(cam, "rotation", 0.0, 0.9).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	tw.set_parallel(false)
+	tw.tween_callback(func(): Game.set_cutscene(false))
 
 
 func exit_cave() -> void:
@@ -511,9 +597,9 @@ func on_boss_killed() -> void:
 	Game.changed.emit()
 
 
-func spawn_spit(from: Vector2, to: Vector2) -> void:
+func spawn_spit(from: Vector2, to: Vector2, col := Color(0.6, 0.95, 0.2), spd := 110.0) -> void:
 	var sp := preload("res://scripts/boss_spit.gd").new()
-	sp.setup(self, from, to)
+	sp.setup(self, from, to, col, spd)
 	entities.add_child(sp)
 
 
@@ -554,19 +640,35 @@ func _hide_ingredients() -> void:
 				candidates.append([cell, item])
 	candidates.shuffle()
 	for c in candidates.slice(0, HIDDEN_COUNT):
-		stashes[c[0]] = {"id": c[1], "count": randi_range(1, 2)}
+		spawn_pickup("stash", c[1], randi_range(1, 2), 0, c[0])
 
 
-func check_hidden(cell: Vector2i) -> void:
-	## Called by the player on every new tile.
-	if not stashes.has(cell):
-		return
-	var h: Dictionary = stashes[cell]
-	stashes.erase(cell)
-	Game.add_item(h["id"], h["count"])
-	var pos := cell_center(cell)
-	popup(pos + Vector2(0, -36), "Found %d %s!" % [h["count"], Game.ITEMS[h["id"]]["name"]], Color(1, 0.9, 0.4))
-	ring_fx(pos, 14.0, Color(1, 0.9, 0.4), 0.5)
+func spawn_pickup(kind: String, item: String, count: int, coins: int, cell: Vector2i) -> void:
+	## Ground pickup sitting exactly on the centre of its tile.
+	var p := preload("res://scripts/pickup.gd").new()
+	p.world = self
+	p.kind = kind
+	p.item = item
+	p.count = count
+	p.coins = coins
+	p.position = cell_center(cell)
+	pickup_layer.add_child(p)
+	pickups.append(p)
+
+
+func try_collect(pos: Vector2) -> bool:
+	## F: pick up the closest stash / remains next to the player.
+	var best: Node2D = null
+	var best_d: float = preload("res://scripts/pickup.gd").NEAR
+	for p in pickups:
+		var d: float = p.position.distance_to(pos)
+		if d < best_d:
+			best_d = d
+			best = p
+	if best == null:
+		return false
+	best.collect()
+	return true
 
 
 # --- enemies ---------------------------------------------------------------
@@ -591,13 +693,14 @@ func _spawn_enemy() -> void:
 
 
 func on_enemy_killed(enemy: Node2D) -> void:
-	var coins := rng.randi_range(1, 3)
-	Game.add_money(coins)
-	var item: String = enemy.kind
-	var count := rng.randi_range(1, 2)
-	Game.add_item(item, count)
-	var text := "+%d %s  +%d coins" % [count, Game.ITEMS[item]["name"], coins]
-	popup(enemy.position + Vector2(0, -30), text, Color(1, 0.85, 0.3))
+	## The slime leaves remains on its tile; walk there and press F.
+	var cell := screen_to_grid(enemy.position)
+	if not is_walkable_cell(cell):
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			if is_walkable_cell(cell + d):
+				cell += d
+				break
+	spawn_pickup("remains", enemy.kind, rng.randi_range(1, 2), rng.randi_range(1, 3), cell)
 	ring_fx(enemy.position, 14.0, Color(0.5, 1, 0.4))
 
 
@@ -751,10 +854,12 @@ func popup(pos: Vector2, text: String, color: Color) -> void:
 	l.add_theme_constant_override("outline_size", 2)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.size = Vector2(120, 12)
-	l.position = pos - Vector2(60, 6)
+	var z: float = player.cam.zoom.x if player and player.cam else 1.0
+	l.scale = Vector2.ONE / z
+	l.position = pos - Vector2(60, 6) / z
 	add_child(l)
 	var tw := create_tween()
-	tw.tween_property(l, "position:y", l.position.y - 14, 0.8)
+	tw.tween_property(l, "position:y", l.position.y - 14 / z, 0.8)
 	tw.parallel().tween_property(l, "modulate:a", 0.0, 0.5).set_delay(0.3)
 	tw.tween_callback(l.queue_free)
 

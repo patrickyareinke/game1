@@ -13,6 +13,8 @@ const SWING_TIME := 0.22
 const SWING_ARC := deg_to_rad(150.0)
 const REACH := 16.0
 const INVULN_TIME := 1.0
+const ZOOM := 2.0                    # character shown at double size
+const CAVE_ZOOM := 1.5               # a bit wider in the boss cave
 
 var world: Node2D
 var dir := Dir.DOWN
@@ -51,6 +53,8 @@ func _ready() -> void:
 	add_child(stick)
 
 	cam = Camera2D.new()
+	cam.zoom = Vector2(ZOOM, ZOOM)
+	cam.ignore_rotation = false          # the boss intro tilts the camera
 	add_child(cam)
 
 
@@ -60,6 +64,9 @@ func _draw() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if Game.cutscene:
+		sprite.frame = dir * 4
+		return
 	var input := Vector2(
 		float(Input.is_physical_key_pressed(KEY_D)) - float(Input.is_physical_key_pressed(KEY_A)),
 		float(Input.is_physical_key_pressed(KEY_S)) - float(Input.is_physical_key_pressed(KEY_W)))
@@ -101,6 +108,9 @@ func _physics_process(delta: float) -> void:
 		cam_target = ((world.boss.position + Vector2(0, -40)) - position) * 0.5
 		cam_target = cam_target.limit_length(110.0)
 	cam.offset = cam.offset.lerp(cam_target, minf(1.0, delta * 5.0))
+	var z := CAVE_ZOOM if world.in_cave else ZOOM
+	cam.zoom = cam.zoom.lerp(Vector2(z, z), minf(1.0, delta * 4.0))
+	cam.rotation = lerpf(cam.rotation, 0.0, minf(1.0, delta * 4.0))
 
 	for id in cooldowns:
 		cooldowns[id] = maxf(cooldowns[id] - delta, 0.0)
@@ -110,9 +120,11 @@ func _physics_process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if Game.cutscene:
+		return
 	var key := event as InputEventKey
 	if key and key.pressed and not key.echo and key.physical_keycode == KEY_F:
-		_gather_water()
+		_interact()
 		return
 
 	var mb := event as InputEventMouseButton
@@ -187,6 +199,12 @@ func _cast(id: String) -> void:
 
 
 # --- misc ------------------------------------------------------------------
+
+func _interact() -> void:
+	## F: pick up stash / remains if one is close, otherwise scoop water.
+	if not world.try_collect(position):
+		_gather_water()
+
 
 func _gather_water() -> void:
 	var cell: Vector2i = world.screen_to_grid(position)

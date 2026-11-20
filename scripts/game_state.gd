@@ -81,6 +81,7 @@ var ui_open := false         # inventory or spell ring visible -> no world click
 var build_mode := false
 var boss := {}               # boss bar info, written by boss.gd
 var boss_defeated := false
+var cutscene := false       # boss intro: player, enemies and boss wait
 
 
 func _ready() -> void:
@@ -265,3 +266,8 @@ func spell_icon(spell: String) -> Texture2D:
 	if spell_upgrade[spell] != "":
 		return icons["up_" + spell_upgrade[spell]]
 	return icons[spell]
+
+
+func set_cutscene(on: bool) -> void:
+	cutscene = on
+	changed.emit()

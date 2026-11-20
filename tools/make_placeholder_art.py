@@ -45,6 +45,66 @@ def save(img, *parts):
 
 
 # ---------------------------------------------------------------------------
+# Shading helpers: lattice-periodic noise (seamless iso tiles) and dithered
+# ball shading (SNES look).
+# ---------------------------------------------------------------------------
+import math
+
+BAYER = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]]
+
+
+def dither_pick(pal, value, x, y):
+    """value in 0..1 -> palette colour, ordered-dithered between steps."""
+    v = max(0.0, min(0.999, value)) * (len(pal) - 1)
+    t = (BAYER[y % 4][x % 4] + 0.5) / 16.0
+    i = int(v) + (1 if (v - int(v)) > t else 0)
+    return pal[min(i, len(pal) - 1)]
+
+
+def make_field(seed, waves=7, max_k=3):
+    """Smooth noise that is periodic on the iso tile lattice (16,8)/(-16,8),
+    so every tile using it joins seamlessly with its neighbours."""
+    rng = random.Random(seed)
+    comps = []
+    for _ in range(waves):
+        m, n = rng.randint(-max_k, max_k), rng.randint(-max_k, max_k)
+        if m == 0 and n == 0:
+            m = 1
+        kx = 2 * math.pi * (m - n) / 32.0
+        ky = 2 * math.pi * (m + n) / 16.0
+        amp = 1.0 / math.hypot(m, n)
+        comps.append((kx, ky, rng.random() * math.tau, amp))
+    total = sum(a for *_, a in comps)
+
+    def f(x, y):
+        # cell pixel -> lattice-aligned coordinates
+        X, Y = x - 20, y - 2
+        v = sum(a * math.sin(kx * X + ky * Y + ph) for kx, ky, ph, a in comps)
+        return 0.5 + 0.5 * v / total
+    return f
+
+
+def shaded_ellipse(img, cx, cy, rx, ry, pal, light=(-0.5, -0.65, 0.6), boost=0.0):
+    """Ball-shaded ellipse lit from the top left, dithered between pal tones
+    (pal ordered dark -> light)."""
+    px = img.load()
+    lx, ly, lz = light
+    ln = math.sqrt(lx * lx + ly * ly + lz * lz)
+    lx, ly, lz = lx / ln, ly / ln, lz / ln
+    for y in range(int(cy - ry) - 1, int(cy + ry) + 2):
+        for x in range(int(cx - rx) - 1, int(cx + rx) + 2):
+            if not (0 <= x < img.width and 0 <= y < img.height):
+                continue
+            nx, ny = (x + 0.5 - cx) / rx, (y + 0.5 - cy) / ry
+            r2 = nx * nx + ny * ny
+            if r2 > 1.0:
+                continue
+            nz = math.sqrt(1.0 - r2)
+            v = nx * lx + ny * ly + nz * lz
+            px[x, y] = dither_pick(pal, 0.15 + 0.85 * max(0.0, v) + boost, x, y)
+
+
+# ---------------------------------------------------------------------------
 # Terrain atlas: 10 cells of 40x20. The 32x16 iso diamond sits at offset (4,2).
 #   0-3 grass, 4-5 grass with flowers, 6-7 dirt, 8-9 water
 # Grass is a full diamond; dirt/water are slightly larger with ragged edges so
@@ -52,8 +112,11 @@ def save(img, *parts):
 # ---------------------------------------------------------------------------
 CELL_W, CELL_H = 40, 20
 GRASS = [c("3f7d2b"), c("4e9632"), c("5fad3b"), c("7cc84a")]
+GRASS5 = [c("2f6a30"), c("3f8434"), c("55a03a"), c("6fb944"), c("8fcf52")]
 DIRT = [c("6b4f2c"), c("86653a"), c("9e7c4a"), c("b8955e")]
+DIRT5 = [c("5e4228"), c("77573a"), c("8f6d48"), c("a88559"), c("c29f70")]
 WATER = [c("23548a"), c("2d68a6"), c("3a7fc0"), c("9fd2ee")]
+WATER5 = [c("1d4a86"), c("255d9e"), c("2f72b4"), c("3f88c8"), c("5aa2d8")]
 ROCK = [c("54504c"), c("6c6862"), c("85807a"), c("a29c94")]
 CAVE = [c("3e3640"), c("4c4450"), c("5a5060"), c("766a78")]
 CAVE_WALL = [c("0c0a10"), c("15111a"), c("1e1924"), c("2a2332")]
@@ -85,49 +148,58 @@ def blobs(px, mask, rng, color, count, size):
             bx, by = max(0, min(CELL_W - 1, bx)), max(0, min(CELL_H - 1, by))
 
 
+FIELD = make_field(21)          # large shapes
+DETAIL = make_field(77, waves=9, max_k=6)   # finer variation
+
+
+def fill_field(px, mask, pal, rng, contrast=1.0, w=(0.7, 0.3)):
+    for y in range(CELL_H):
+        for x in range(CELL_W):
+            if mask(x, y):
+                v = w[0] * FIELD(x, y) + w[1] * DETAIL(x, y)
+                v = 0.5 + (v - 0.5) * contrast * 1.6
+                px[x, y] = dither_pick(pal, v, x, y)
+
+
 def stone_tile(rng, pal):
     """Opaque diamond like grass, but rocky (mountain) or dark (cave floor)."""
     img = Image.new("RGBA", (CELL_W, CELL_H))
     px = img.load()
-    m = in_diamond
-    for y in range(CELL_H):
-        for x in range(CELL_W):
-            if m(x, y):
-                px[x, y] = pal[1]
-    blobs(px, m, rng, pal[0], 7, 6)
-    blobs(px, m, rng, pal[2], 6, 5)
-    for _ in range(5):
-        x, y = rng.randrange(6, 34), rng.randrange(3, 16)
-        if m(x, y) and m(x + 1, y):
-            px[x, y] = pal[3]
-            px[x + 1, y] = pal[2]
+    pal5 = [pal[0], pal[0], pal[1], pal[2], pal[3]]
+    fill_field(px, in_diamond, pal5, rng, 1.1, (0.4, 0.6))
+    for _ in range(4):  # cracks with a lit lower edge
+        x, y = rng.randrange(8, 32), rng.randrange(4, 15)
+        for i in range(rng.randrange(2, 5)):
+            if in_diamond(x + i, y) and in_diamond(x + i, y + 1):
+                px[x + i, y] = pal[0]
+                px[x + i, y + 1] = pal[3]
+            y += rng.choice((0, 0, 1))
     return img
+
+
+def grass_blade(px, x, y, m):
+    """Tiny 'v' grass tuft: two light tips over a dark root."""
+    pts = [(x - 1, y - 1, GRASS5[4]), (x + 1, y - 1, GRASS5[4]), (x, y, GRASS5[3]), (x, y + 1, GRASS5[0])]
+    if all(m(a, b) for a, b, _ in pts):
+        for a, b, col in pts:
+            px[a, b] = col
 
 
 def grass_tile(rng, flowers=False):
     img = Image.new("RGBA", (CELL_W, CELL_H))
     px = img.load()
     m = in_diamond
-    for y in range(CELL_H):
-        for x in range(CELL_W):
-            if m(x, y):
-                px[x, y] = GRASS[1]
-    blobs(px, m, rng, GRASS[0], 6, 5)
-    blobs(px, m, rng, GRASS[2], 6, 5)
-    # grass tufts: light blade with dark root
-    for _ in range(7):
-        x, y = rng.randrange(6, 34), rng.randrange(3, 17)
-        if m(x, y) and m(x, y + 1):
-            px[x, y] = GRASS[3]
-            px[x, y + 1] = GRASS[0]
+    fill_field(px, m, GRASS5, rng)
+    for _ in range(4):
+        grass_blade(px, rng.randrange(7, 33), rng.randrange(3, 16), m)
     if flowers:
         for _ in range(3):
-            x, y = rng.randrange(8, 32), rng.randrange(4, 15)
-            col = rng.choice([c("f4f0e0"), c("f2d64b"), c("e98ab8")])
-            if m(x, y):
+            x, y = rng.randrange(9, 31), rng.randrange(4, 14)
+            col = rng.choice([c("fbf6e8"), c("f6d850"), c("f09ac0"), c("a8c8ff")])
+            if m(x, y) and m(x + 1, y) and m(x, y + 1):
                 px[x, y] = col
-                if m(x, y + 1):
-                    px[x, y + 1] = GRASS[0]
+                px[x + 1, y] = c("fffbe0") if col != c("f6d850") else c("fff2a0")
+                px[x, y + 1] = GRASS5[0]
     return img
 
 
@@ -139,24 +211,23 @@ def overlay_tile(rng, pal, kind):
         for x in range(CELL_W):
             mask[(x, y)] = ragged(x, y, rng)
     m = lambda x, y: mask.get((x, y), False)
-    for (x, y), inside in mask.items():
-        if inside:
-            px[x, y] = pal[1]
-    blobs(px, m, rng, pal[0], 5, 6)
-    blobs(px, m, rng, pal[2], 5, 6)
-    if kind == "dirt":  # pebbles
+    pal5 = DIRT5 if kind == "dirt" else WATER5
+    fill_field(px, m, pal5, rng, 0.9)
+    if kind == "dirt":  # pebbles with a highlight
         for _ in range(4):
-            x, y = rng.randrange(8, 32), rng.randrange(4, 16)
-            if m(x, y):
-                px[x, y] = pal[3]
-                if m(x + 1, y + 1):
-                    px[x + 1, y + 1] = pal[0]
-    else:  # water glints: short horizontal streaks
+            x, y = rng.randrange(9, 31), rng.randrange(5, 15)
+            if m(x, y) and m(x + 1, y) and m(x, y + 1):
+                px[x, y] = pal5[4]
+                px[x + 1, y] = pal5[3]
+                px[x, y + 1] = pal5[0]
+    else:  # sparkles: short streak + bright dot
         for _ in range(3):
-            x, y = rng.randrange(8, 28), rng.randrange(4, 16)
-            for i in range(rng.randrange(2, 5)):
-                if m(x + i, y):
-                    px[x + i, y] = pal[3]
+            x, y = rng.randrange(9, 27), rng.randrange(5, 15)
+            n = rng.randrange(2, 4)
+            if all(m(x + i, y) for i in range(n + 1)):
+                for i in range(n):
+                    px[x + i, y] = c("8cc4ec")
+                px[x + n, y] = c("e8f6ff")
     return img
 
 
@@ -185,43 +256,43 @@ def shadow(img, cx, cy, rx, ry):
     return Image.alpha_composite(sh, img)
 
 
+LEAF = [c("1c4a24"), c("27612a"), c("357a30"), c("4a9636"), c("67b443"), c("8fd25a")]
+
+
 def make_tree():
     img = Image.new("RGBA", (34, 46))
     d = ImageDraw.Draw(img)
-    # trunk
-    d.rectangle((14, 28, 19, 42), fill=c("6b4423"))
-    d.rectangle((18, 28, 19, 42), fill=c("4e3018"))
-    d.rectangle((14, 28, 14, 42), fill=c("8a5a30"))
-    d.rectangle((12, 41, 21, 42), fill=c("6b4423"))
-    # canopy: dark base, mid, light (lit from top-left)
-    for (x, y, r) in [(17, 16, 13), (8, 21, 7), (26, 21, 7), (17, 25, 8)]:
-        d.ellipse((x - r, y - r, x + r, y + r), fill=c("2a5e26"))
-    for (x, y, r) in [(15, 14, 10), (8, 19, 5), (24, 18, 6)]:
-        d.ellipse((x - r, y - r, x + r, y + r), fill=c("3c8530"))
-    for (x, y, r) in [(13, 11, 5), (21, 13, 3), (8, 17, 2)]:
-        d.ellipse((x - r, y - r, x + r, y + r), fill=c("58a83c"))
+    # trunk with bark shading and roots
+    for x in range(14, 20):
+        tone = [c("8a5a30"), c("7a4e28"), c("6b4423"), c("6b4423"), c("553418"), c("452a12")][x - 14]
+        d.line((x, 26, x, 42), fill=tone)
+    d.point([(15, 32), (16, 36), (17, 30), (18, 38)], fill=c("452a12"))
+    d.line((11, 42, 14, 40), fill=c("6b4423")); d.line((20, 40, 23, 42), fill=c("553418"))
+    d.line((12, 42, 22, 42), fill=c("553418"))
+    # canopy: back balls darker, front balls lit
+    for (x, y, r, boost) in [(24, 22, 7, -0.15), (9, 22, 7, -0.15), (17, 25, 8, -0.1),
+                             (17, 14, 11, 0.0), (8, 17, 6, 0.0), (26, 16, 6, 0.0),
+                             (13, 10, 6, 0.08), (22, 9, 5, 0.08)]:
+        shaded_ellipse(img, x, y, r, r * 0.92, LEAF, boost=boost)
     px = img.load()
     rng = random.Random(3)
-    for _ in range(14):
-        x, y = rng.randrange(6, 28), rng.randrange(4, 28)
+    for _ in range(22):  # leaf sparkle / depth specks
+        x, y = rng.randrange(4, 30), rng.randrange(3, 28)
         if px[x, y][3]:
-            px[x, y] = c("7cc84a") if y < 16 else c("1f4a1d")
-    add_outline(img)
-    save(shadow(img, 17, 42, 10, 3), "sprites", "tree.png")
+            px[x, y] = LEAF[5] if y < 14 and rng.random() < 0.7 else LEAF[0]
+    add_outline(img, c("143018"))
+    save(shadow(img, 17, 42, 11, 3), "sprites", "tree.png")
 
 
 def make_bush():
     img = Image.new("RGBA", (20, 16))
-    d = ImageDraw.Draw(img)
     for (x, y, r) in [(7, 9, 5), (13, 9, 5), (10, 6, 5)]:
-        d.ellipse((x - r, y - r, x + r, y + r), fill=c("2f6a28"))
-    for (x, y, r) in [(9, 6, 3), (13, 8, 2)]:
-        d.ellipse((x - r, y - r, x + r, y + r), fill=c("4a9a36"))
+        shaded_ellipse(img, x, y, r, r * 0.9, LEAF[:5])
     px = img.load()
     for (x, y) in [(6, 9), (12, 11), (14, 6), (9, 11)]:
-        px[x, y] = c("d8384a")
-        px[x, y - 1] = c("f58a96")
-    add_outline(img)
+        px[x, y] = c("c8283a")
+        px[x, y - 1] = c("f8909a")
+    add_outline(img, c("143018"))
     save(shadow(img, 10, 14, 7, 2), "sprites", "bush.png")
 
 
@@ -450,19 +521,32 @@ def make_icons():
 
 
 def make_slime(name, base, light, shine, eye, extra=None):
-    """2 frames of 18x16, feet at (9, 14)."""
+    """2 frames of 18x16, feet at (9, 14). Jelly ball shading + specular."""
+    def mix(a, b, t):
+        return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3)) + (255,)
+    dark = mix(base, (10, 10, 20, 255), 0.45)
+    pal = [dark, base, mix(base, light, 0.5), light, mix(light, shine, 0.35)]
     sheet = Image.new("RGBA", (36, 16))
     for f, box in enumerate([(2, 5, 15, 14), (1, 7, 16, 14)]):
         img = Image.new("RGBA", (18, 16))
+        cx, cy = (box[0] + box[2] + 1) / 2, (box[1] + box[3] + 1) / 2 + 1
+        rx, ry = (box[2] - box[0] + 1) / 2, (box[3] - box[1] + 1) / 2 + 1
+        shaded_ellipse(img, cx, cy, rx, ry, pal)
+        img = img.crop((0, 0, 18, 15)).crop((0, 0, 18, 16))  # flat bottom
+        px = img.load()
+        for x in range(18):  # flat, darker base line
+            if px[x, 14][3]:
+                px[x, 14] = dark
         d = ImageDraw.Draw(img)
-        d.ellipse(box, fill=base)
-        d.ellipse((box[0] + 1, box[1], box[2] - 3, box[3] - 3), fill=light)
-        d.point([(box[0] + 3, box[1] + 2), (box[0] + 4, box[1] + 2)], fill=shine)
+        d.point([(box[0] + 3, box[1] + 2), (box[0] + 4, box[1] + 2), (box[0] + 3, box[1] + 3)], fill=shine)
         ey = box[1] + 4
-        d.point([(7, ey), (11, ey), (7, ey + 1), (11, ey + 1)], fill=eye)
+        for ex in (7, 11):
+            d.rectangle((ex, ey, ex, ey + 1), fill=eye)
+            d.point((ex, ey), fill=mix(eye, shine, 0.6) if eye[0] > 128 else eye)
+        d.point([(8, ey + 3), (9, ey + 3), (10, ey + 3)], fill=dark)  # tiny mouth
         if extra:
             extra(d, box, f)
-        add_outline(img)
+        add_outline(img, mix(dark, (0, 0, 0, 255), 0.5))
         sheet.paste(img, (f * 18, 0))
     save(sheet, "sprites", name + ".png")
 
@@ -788,21 +872,22 @@ def make_boss():
             foot = (cx + side * fx, ky + 18)
             d.line((cx + side * 12, ky, knee[0], knee[1]), fill=CH_D, width=3)
             d.line((knee[0], knee[1], foot[0], foot[1]), fill=CH_D, width=2)
-    # abdomen (behind, higher)
-    d.ellipse((cx - 30, 4, cx + 30, 52), fill=CH)
-    for y in (14, 24, 34, 44):
-        d.arc((cx - 30, y - 18, cx + 30, y + 10), 20, 160, fill=STRIPE, width=2)
-    d.ellipse((cx - 20, 8, cx - 4, 22), fill=CH_L)
+    # abdomen (behind, higher): shaded chitin with glowing stripes
+    BODY = [c("1c0c28"), c("2e1640"), c("4a2a5e"), c("6a3e86"), c("8e5cae"), c("b48ad0")]
+    shaded_ellipse(img, cx, 28, 30, 24, BODY)
+    for y in (16, 26, 36, 46):
+        d.arc((cx - 28, y - 18, cx + 28, y + 8), 25, 155, fill=c("2a143a"), width=1)
+        d.arc((cx - 28, y - 17, cx + 28, y + 9), 35, 145, fill=c("c070e0"), width=1)
     # thorax
-    d.ellipse((cx - 24, 34, cx + 24, 86), fill=CH)
-    d.ellipse((cx - 20, 38, cx + 4, 60), fill=CH_L)
-    d.ellipse((cx - 10, 50, cx + 10, 72), fill=c("1a0c22"))  # heart cavity
+    shaded_ellipse(img, cx, 60, 24, 26, BODY)
+    shaded_ellipse(img, cx, 61, 11, 12, [c("0c0410"), c("1a0c22"), c("3a0c28"), c("5a1030")], light=(0.3, 0.5, 0.5))
     # head
     d.polygon([(cx - 16, 34), (cx + 16, 34), (cx, 54)], fill=CH)
     d.polygon([(cx - 16, 34), (cx, 34), (cx, 54)], fill=CH_L)
-    d.ellipse((cx - 17, 28, cx - 7, 38), fill=EYE)
-    d.ellipse((cx + 7, 28, cx + 17, 38), fill=EYE)
-    d.point([(cx - 14, 30), (cx + 10, 30)], fill=c("ffd0c0"))
+    EYES = [c("5a0a10"), c("a8141a"), c("e8302a"), c("ff7050"), c("ffc8a8")]
+    shaded_ellipse(img, cx - 12, 33, 5, 5, EYES)
+    shaded_ellipse(img, cx + 12, 33, 5, 5, EYES)
+    d.point([(cx - 14, 31), (cx + 10, 31)], fill=c("fff0e8"))
     d.line((cx - 4, 52, cx - 7, 58), fill=BONE, width=2)
     d.line((cx + 4, 52, cx + 7, 58), fill=BONE, width=2)
     # antennae
@@ -890,6 +975,39 @@ def make_big_mountain():
     save(shadow(img, 100, 150, 90, 8), "sprites", "mountain_big.png")
 
 
+def make_remains():
+    """Slime remains: a goo splat shaped like one iso tile (32x16 diamond),
+    with the dropped ingredient lying in it. 34x20, tile centre at (17, 10)."""
+    kinds = {
+        "oil": ([c("5e3a0c"), c("8a5a14"), c("c8861e"), c("f0b850")], "oil"),
+        "ash": ([c("2e2e34"), c("4e4e56"), c("7a7a84"), c("a8a8b0")], "ash"),
+        "water": ([c("143a6e"), c("2a6ab8"), c("4a9ae0"), c("a8dcff")], "water"),
+    }
+    for kind, (pal, item) in kinds.items():
+        rng = random.Random(len(kind))
+        img = Image.new("RGBA", (34, 20))
+        px = img.load()
+        for y in range(20):
+            for x in range(34):
+                dx, dy = (x + 0.5 - 17) / 13.0, (y + 0.5 - 10) / 6.5
+                dx, dy = abs(dx) ** 1.6 + abs(dy) ** 1.6, 0.0
+                dx = dx ** (1 / 1.6)
+                wob = 0.9 + 0.08 * math.sin(math.atan2(y - 10, x - 17) * 3 + len(kind))
+                if dx + dy < wob:
+                    v = 1.0 - (dx + dy) / wob
+                    px[x, y] = dither_pick(pal[:3], 0.25 + 0.7 * v, x, y)
+        for _ in range(4):  # droplets around the splat
+            x, y = rng.choice([(3, 9), (30, 11), (9, 3), (25, 16), (6, 14), (28, 5)])
+            px[x, y] = pal[1]
+        # shine
+        for (x, y) in ((12, 7), (13, 7), (12, 8)):
+            px[x, y] = pal[3]
+        # ingredient lying in the goo (small, from the 16x16 icon)
+        ic = Image.open(os.path.join(ROOT, "icons", item + ".png")).resize((10, 10), Image.NEAREST)
+        img.alpha_composite(ic, (15, 3))
+        save(img, "sprites", "remains_" + kind + ".png")
+
+
 if __name__ == "__main__":
     make_terrain()
     make_tree()
@@ -909,3 +1027,4 @@ if __name__ == "__main__":
     make_mountain()
     make_big_mountain()
     make_boss()
+    make_remains()

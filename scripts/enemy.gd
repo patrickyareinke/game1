@@ -19,6 +19,10 @@ var slow_t := 0.0
 var root_t := 0.0
 var dead := false
 var hit_radius := 0.0        # extra hit size (big enemies use more)
+var spitter := false         # keeps its distance and spits slime
+var spit_t := 2.0
+const SPIT_RANGE := 120.0
+const SPIT_COLORS := {"oil": Color(0.95, 0.65, 0.15), "ash": Color(0.55, 0.55, 0.6), "water": Color(0.35, 0.7, 1.0)}
 var hurt_t := 0.0
 var knock := Vector2.ZERO
 var wander_dir := Vector2.ZERO
@@ -54,10 +58,22 @@ func _physics_process(delta: float) -> void:
 
 	var player: Node2D = world.player
 	var to_player := player.position - position
-	if to_player.length() > ACTIVE_RANGE:
+	if to_player.length() > ACTIVE_RANGE or Game.cutscene:
 		return
 	var dir := Vector2.ZERO
-	if to_player.length() < CHASE_RANGE:
+	if spitter and to_player.length() < SPIT_RANGE:
+		# keep some distance, puff up and spit
+		if to_player.length() < 55.0:
+			dir = -to_player.normalized() * 0.8
+		spit_t -= delta
+		if spit_t <= 0.0 and root_t <= 0.0:
+			spit_t = randf_range(2.2, 3.2)
+			var tw := create_tween()
+			tw.tween_property(sprite, "scale", Vector2(1.25, 0.8), 0.15)
+			tw.tween_callback(func(): world.spawn_spit(position + Vector2(0, -4), world.player.position,
+				SPIT_COLORS[kind], 70.0))
+			tw.tween_property(sprite, "scale", Vector2.ONE, 0.12)
+	elif to_player.length() < CHASE_RANGE:
 		dir = to_player.normalized()
 	else:
 		wander_t -= delta
