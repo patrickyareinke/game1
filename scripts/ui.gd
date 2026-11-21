@@ -20,6 +20,9 @@ const SCREEN := Vector2(480, 270)
 var face: TextureRect
 var hp_bar: Control
 var tool_icon: TextureRect
+var hand_icons := {}             # "left"/"right" -> TextureRect of the worn gauntlet
+var energy_bar: Control
+var energy_hint: Label
 var slot_normal: StyleBox
 var slot_equipped: StyleBox
 var build_label: Label
@@ -115,19 +118,42 @@ func _centered(c: Control) -> void:
 
 func _build_hud() -> void:
 	face = TextureRect.new()
-	face.position = Vector2(SCREEN.x / 2.0 - 8.0, SCREEN.y - 28.0)
+	face.position = Vector2(SCREEN.x / 2.0 - 8.0, SCREEN.y - 34.0)
 	face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE   # 32x32 texture shown at 16x16
 	face.size = Vector2(16, 16)
 	add_child(face)
 
 	hp_bar = Control.new()
-	hp_bar.position = Vector2(SCREEN.x / 2.0 - 40.0, SCREEN.y - 10.0)
+	hp_bar.position = Vector2(SCREEN.x / 2.0 - 40.0, SCREEN.y - 16.0)
 	hp_bar.size = Vector2(80, 7)
 	hp_bar.draw.connect(_draw_hp)
 	add_child(hp_bar)
 
+	energy_bar = Control.new()
+	energy_bar.position = Vector2(SCREEN.x / 2.0 - 40.0, SCREEN.y - 8.0)
+	energy_bar.size = Vector2(80, 5)
+	energy_bar.draw.connect(_draw_energy)
+	add_child(energy_bar)
+	energy_hint = _label("R: COMBO", GOLD)
+	energy_hint.position = Vector2(SCREEN.x / 2.0 + 64.0, SCREEN.y - 13.0)
+	add_child(energy_hint)
+
+	# worn gauntlets: left hand (Q) left of the bars, right hand (RMB) right
+	for hand in ["left", "right"]:
+		var x := SCREEN.x / 2.0 - 64.0 if hand == "left" else SCREEN.x / 2.0 + 46.0
+		var ic := TextureRect.new()
+		ic.position = Vector2(x, SCREEN.y - 22.0)
+		add_child(ic)
+		hand_icons[hand] = ic
+		var key := _label("Q" if hand == "left" else "RMB", Color(0.85, 0.9, 1.0))
+		key.size = Vector2(26, 11)
+		key.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		key.position = Vector2(x - 5, SCREEN.y - 34.0)
+		add_child(key)
+		hand_icons[hand + "_key"] = key
+
 	tool_icon = TextureRect.new()
-	tool_icon.position = Vector2(SCREEN.x / 2.0 - 62.0, SCREEN.y - 20.0)
+	tool_icon.position = Vector2(SCREEN.x / 2.0 - 88.0, SCREEN.y - 22.0)
 	add_child(tool_icon)
 
 	boss_box = Control.new()
@@ -163,6 +189,34 @@ func _draw_hp() -> void:
 		hp_bar.draw_line(Vector2(x, 1), Vector2(x, h - 1), Color(0, 0, 0, 0.35))
 
 
+func _draw_energy() -> void:
+	var w := energy_bar.size.x
+	var h := energy_bar.size.y
+	var frac := Game.energy / Game.MAX_ENERGY
+	energy_bar.draw_rect(Rect2(0, 0, w, h), Color("10121e"))
+	energy_bar.draw_rect(Rect2(1, 1, w - 2, h - 2), Color("1a2240"))
+	var full := frac >= 1.0
+	var col := Color("3aa0f0")
+	if full:
+		var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 120.0)
+		col = Color("f2c94a").lerp(Color("fff6c0"), pulse)
+	energy_bar.draw_rect(Rect2(1, 1, (w - 2) * frac, h - 2), col)
+	energy_bar.draw_rect(Rect2(1, 1, (w - 2) * frac, 1), col.lightened(0.4))
+
+
+func _process(_delta: float) -> void:
+	# cooldown dimming of the worn gauntlets, pulsing combo bar
+	var player = get_parent().player if get_parent() else null
+	for hand in ["left", "right"]:
+		var ic: TextureRect = hand_icons[hand]
+		var cd: float = player.cooldowns.get(Game.hands[hand], 0.0) if player else 0.0
+		ic.modulate = Color(0.45, 0.45, 0.55) if cd > 0.0 else Color.WHITE
+	var full := Game.energy >= Game.MAX_ENERGY and not Game.cutscene
+	energy_hint.visible = full and int(Time.get_ticks_msec() / 400) % 2 == 0
+	if full:
+		energy_bar.queue_redraw()
+
+
 func _draw_boss_bar() -> void:
 	if Game.boss.is_empty():
 		return
@@ -189,7 +243,7 @@ func _build_inventory() -> void:
 	var left := VBoxContainer.new()
 	row.add_child(left)
 	left.add_theme_constant_override("separation", 4)
-	left.add_child(_label("ITEMS", GOLD))
+	left.add_child(_label("GAUNTLET ALCHEMIST", GOLD))
 	var grid := GridContainer.new()
 	grid.columns = 8
 	grid.add_theme_constant_override("h_separation", 2)
@@ -210,6 +264,7 @@ func _build_inventory() -> void:
 		b.add_theme_stylebox_override("pressed", hover)
 		b.add_theme_stylebox_override("hover", hover)
 		b.pressed.connect(_on_slot_pressed.bind(i))
+		b.gui_input.connect(_on_slot_input.bind(i))
 		grid.add_child(b)
 		slots.append(b)
 		var cnt := _label()
@@ -242,7 +297,7 @@ func _build_inventory() -> void:
 	coins_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	coin_row.add_child(coins_label)
 	right.add_child(coin_row)
-	right.add_child(_label("Click a tool to hold it\nClick the book: spells", Color(0.8, 0.85, 1.0, 0.75)))
+	right.add_child(_label("Gauntlet: click=RMB\n  right-click=Q\nTool: click to hold\nBook: powers, combos", Color(0.8, 0.85, 1.0, 0.75)))
 
 
 func _build_book() -> void:
@@ -421,13 +476,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	match key.physical_keycode:
 		KEY_E:
 			_set_inventory(not inv_panel.visible)
-		KEY_Q:
-			_set_ring(not ring.visible)
 		KEY_ESCAPE:
 			_set_inventory(false)
 			_set_ring(false)
-		KEY_1, KEY_2, KEY_3:
-			_pick_spell(Game.SPELL_ORDER[key.physical_keycode - KEY_1])
 		_:
 			return
 	get_viewport().set_input_as_handled()
@@ -469,6 +520,17 @@ func _on_slot_pressed(i: int) -> void:
 		book_panel.visible = not book_panel.visible
 	elif Game.TOOLS.has(slot["id"]):
 		Game.equip(slot["id"])
+	elif Game.GAUNTLET_OF.has(slot["id"]):
+		Game.equip_gauntlet(slot["id"], "right")
+
+
+func _on_slot_input(event: InputEvent, i: int) -> void:
+	## Right-click a gauntlet: wear it on the left hand (Q).
+	var mb := event as InputEventMouseButton
+	if mb and mb.pressed and mb.button_index == MOUSE_BUTTON_RIGHT:
+		var slot = Game.inventory[i]
+		if slot != null and Game.GAUNTLET_OF.has(slot["id"]):
+			Game.equip_gauntlet(slot["id"], "left")
 
 
 # --- refresh ---------------------------------------------------------------
@@ -489,12 +551,21 @@ func refresh() -> void:
 			boss_status.add_theme_color_override("font_color", Color.WHITE)
 		boss_box.queue_redraw()
 	tool_icon.texture = Game.icons[Game.equipped]
+	for hand in ["left", "right"]:
+		hand_icons[hand].texture = Game.icons["g_" + Game.hands[hand]]
+		hand_icons[hand].visible = not Game.cutscene
+		hand_icons[hand + "_key"].visible = not Game.cutscene
+	energy_bar.visible = not Game.cutscene
+	energy_bar.queue_redraw()
 
 	for i in Game.SLOTS:
 		var slot = Game.inventory[i]
 		slots[i].icon = Game.icons[slot["id"]] if slot != null else null
 		slot_counts[i].text = str(slot["count"]) if slot != null and slot["count"] > 1 else ""
-		var is_equipped: bool = slot != null and slot["id"] == Game.equipped
+		var hand := Game.hand_of(slot["id"]) if slot != null else ""
+		if hand != "":
+			slot_counts[i].text = "Q" if hand == "left" else "R"
+		var is_equipped: bool = slot != null and (slot["id"] == Game.equipped or hand != "")
 		slots[i].add_theme_stylebox_override("normal", slot_equipped if is_equipped else slot_normal)
 
 	coins_label.text = "%d G" % Game.money
@@ -506,18 +577,24 @@ func refresh() -> void:
 	stats_label.text = "\n".join(names)
 	stats_values.text = "\n".join(values)
 
-	var book := PackedStringArray(["SPELLBOOK"])
+	var book := PackedStringArray(["GAUNTLET POWERS", ""])
 	for id in Game.SPELL_ORDER:
-		var s: Dictionary = Game.SPELLS[id]
-		book.append("")
-		book.append("%s   Lv %d   (cast %d times)" % [s["name"], Game.spell_level(id), Game.spell_casts[id]])
-		book.append("   Damage %.2f    Cost: %s" % [Game.spell_damage(id), Game.cost_text(id)])
-		book.append("   " + s["info"])
-		if Game.spell_upgrade[id] == "":
-			book.append("   Upgrade unlocks at %d enemy hits: %d/%d" % [Game.UPGRADE_HITS,
-				mini(Game.spell_hits[id], Game.UPGRADE_HITS), Game.UPGRADE_HITS])
-		else:
-			book.append("   Upgrade: " + Game.upgrade_name(id))
+		var sp: Dictionary = Game.SPELLS[id]
+		var worn := ""
+		for h in Game.hands:
+			if Game.hands[h] == id:
+				worn = "  [%s]" % ("Q" if h == "left" else "RMB")
+		book.append("%s  Lv %d  Dmg %.1f  Cost: %s%s" % [sp["name"], Game.spell_level(id),
+			Game.spell_damage(id), Game.cost_text(id), worn])
+		var up_txt := "Upgrade: " + Game.upgrade_name(id) if Game.spell_upgrade[id] != "" \
+			else "Upgrade at %d hits: %d/%d" % [Game.UPGRADE_HITS, mini(Game.spell_hits[id], Game.UPGRADE_HITS), Game.UPGRADE_HITS]
+		book.append("   %s.  %s" % [sp["info"], up_txt])
+	book.append("")
+	book.append("GAUNTLET COMBOS  (energy full: R)")
+	for k in Game.COMBOS:
+		var mark := "> " if k == Game.combo_key() else "  "
+		var parts: PackedStringArray = k.split("+")
+		book.append("%s%s: %s + %s" % [mark, Game.COMBOS[k]["name"], Game.SPELLS[parts[0]]["name"], Game.SPELLS[parts[1]]["name"]])
 	book.append("")
 	book.append("(click to close)")
 	book_label.text = "\n".join(book)

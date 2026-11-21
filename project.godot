@@ -6,8 +6,8 @@ config_version=5
 
 [application]
 
-config/name="Iso Survival"
-config/description="Isometric 2D pixel-art building & survival game"
+config/name="Gauntlet Alchemist"
+config/description="Gauntlet Alchemist - isometric pixel-art alchemy, building & survival"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.4", "GL Compatibility")
 

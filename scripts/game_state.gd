@@ -1,9 +1,11 @@
 extends Node
-## Global game state (autoload "Game"): inventory, money, stats, spells, HP.
+## Global game state (autoload "Game") of Gauntlet Alchemist: inventory,
+## money, stats, gauntlets (one power each, two worn), energy, HP.
 ## Everything that changes emits `changed`, and the UI redraws from it.
 
 signal changed
 signal upgrade_ready(spell: String)   # a spell reached UPGRADE_HITS
+signal energy_full
 
 const SLOTS := 40                    # 8 columns x 5 rows
 const MAX_HP := 10
@@ -18,6 +20,10 @@ const ITEMS := {
 	"pickaxe": {"name": "Pickaxe"},
 	"wood": {"name": "Wood"},
 	"stone": {"name": "Stone"},
+	"g_fireball": {"name": "Ember Gauntlet"},
+	"g_mudball": {"name": "Mire Gauntlet"},
+	"g_fiststamp": {"name": "Titan Gauntlet"},
+	"g_quicksteel": {"name": "Fast Steel Gauntlet"},
 }
 
 # Tools you can hold. Only the axe chops trees, only the pickaxe breaks rocks.
@@ -35,8 +41,29 @@ const SPELLS := {
 		"cooldown": 0.45, "info": "Slows enemies for 3 s"},
 	"fiststamp": {"name": "Magic Fiststamp", "cost": {}, "damage": 2.0,
 		"cooldown": 2.0, "info": "Area hit at the cursor, knocks back"},
+	"quicksteel": {"name": "Fast Steel", "cost": {}, "damage": 1.2,
+		"cooldown": 0.5, "info": "Rapid flurry of steel punches in front of you"},
 }
-const SPELL_ORDER := ["fireball", "mudball", "fiststamp"]
+const SPELL_ORDER := ["fireball", "mudball", "fiststamp", "quicksteel"]
+
+# Each gauntlet carries one power (a SPELLS id). You wear two at a time:
+# left hand fires with Q, right hand with the right mouse button.
+const GAUNTLET_OF := {"g_fireball": "fireball", "g_mudball": "mudball",
+	"g_fiststamp": "fiststamp", "g_quicksteel": "quicksteel"}
+
+# Energy builds up as you hit enemies; when full, R fires the combination
+# attack of the two gauntlets you wear (order does not matter).
+const MAX_ENERGY := 100.0
+const ENERGY_PER_POWER_HIT := 7.0
+const ENERGY_PER_MELEE_HIT := 4.0
+const COMBOS := {
+	"fireball+mudball": {"name": "Magma Rain", "desc": "Molten meteors rain around the cursor, leaving lava"},
+	"fireball+fiststamp": {"name": "Meteor Fist", "desc": "A giant burning fist crashes down: huge blast + lava"},
+	"fiststamp+mudball": {"name": "Earthquake", "desc": "The ground shakes: big area damage, everyone slowed"},
+	"fireball+quicksteel": {"name": "Blazing Rush", "desc": "Dash to the cursor through enemies, trail of fire"},
+	"mudball+quicksteel": {"name": "Mud Flurry", "desc": "Punch storm all around you, enemies stuck in mud"},
+	"fiststamp+quicksteel": {"name": "Steel Storm", "desc": "A rain of small steel fists around the cursor"},
+}
 
 # After UPGRADE_HITS enemy hits with a spell you pick one of three upgrades.
 const UPGRADE_HITS := 10
@@ -55,6 +82,11 @@ const UPGRADES := {
 		{"key": "slap", "name": "Slap Hand", "desc": "Much bigger push-back area, 60% damage"},
 		{"key": "double", "name": "Double Fist", "desc": "Two fists, scattered in a bigger area"},
 		{"key": "fast", "name": "Fast Fist", "desc": "Faster, +25% damage, quake slows enemies"},
+	],
+	"quicksteel": [
+		{"key": "reach", "name": "Long Reach", "desc": "Punches reach further, lunge forward"},
+		{"key": "hundred", "name": "Hundred Fists", "desc": "Five punches instead of three"},
+		{"key": "shock", "name": "Shock Knuckle", "desc": "Last punch sends out a shockwave"},
 	],
 }
 const STAT_ORDER := ["fighter", "alchemy", "building", "fitness", "wisdom"]
@@ -76,6 +108,9 @@ var inventory: Array = []    # SLOTS entries: null or {"id": String, "count": in
 var money := 0
 var hp := MAX_HP
 var active_spell := "fireball"
+var hands := {"left": "fiststamp", "right": "fireball"}   # powers worn (Q / RMB)
+var energy := 0.0
+var energy_lock_until := 0     # msec; combo hits do not refill energy
 var equipped := "stick"
 var ui_open := false         # inventory or spell ring visible -> no world clicks
 var build_mode := false
@@ -88,7 +123,8 @@ var cutscene := false       # boss intro: player, enemies and boss wait
 func _ready() -> void:
 	for id in ["stick", "spellbook", "oil", "ash", "water", "coin",
 			"fireball", "mudball", "fiststamp", "slap", "face", "face_hurt", "money",
-			"axe", "pickaxe", "wood", "stone"]:
+			"axe", "pickaxe", "wood", "stone", "quicksteel",
+			"g_fireball", "g_mudball", "g_fiststamp", "g_quicksteel"]:
 		icons[id] = load("res://assets/icons/%s.png" % id)
 	for spell in UPGRADES:
 		for u in UPGRADES[spell]:
@@ -117,6 +153,10 @@ func reset() -> void:
 	add_item("pickaxe")
 	equipped = "stick"
 	add_item("spellbook")
+	for g in GAUNTLET_OF:
+		add_item(g)
+	hands = {"left": "fiststamp", "right": "fireball"}
+	energy = 0.0
 	add_item("oil", 20)
 	add_item("ash", 20)
 	add_item("water", 20)
@@ -245,6 +285,7 @@ func cycle_tool(step: int) -> void:
 func register_spell_hit(spell: String) -> void:
 	if not SPELLS.has(spell):
 		return
+	add_energy(ENERGY_PER_POWER_HIT)
 	spell_hits[spell] += 1
 	if spell_hits[spell] == UPGRADE_HITS and spell_upgrade[spell] == "":
 		upgrade_ready.emit(spell)
@@ -273,3 +314,43 @@ func spell_icon(spell: String) -> Texture2D:
 func set_cutscene(on: bool) -> void:
 	cutscene = on
 	changed.emit()
+
+
+# --- gauntlets & energy ------------------------------------------------------
+
+func equip_gauntlet(item: String, hand: String) -> void:
+	## Put a gauntlet on a hand; if the other hand wears it, they swap.
+	var power: String = GAUNTLET_OF[item]
+	var other := "right" if hand == "left" else "left"
+	if hands[other] == power:
+		hands[other] = hands[hand]
+	hands[hand] = power
+	changed.emit()
+
+
+func hand_of(item: String) -> String:
+	## "left", "right" or "" for a gauntlet item.
+	for h in hands:
+		if hands[h] == GAUNTLET_OF.get(item, ""):
+			return h
+	return ""
+
+
+func add_energy(amount: float) -> void:
+	if Time.get_ticks_msec() < energy_lock_until:
+		return
+	var was_full := energy >= MAX_ENERGY
+	energy = minf(MAX_ENERGY, energy + amount)
+	if energy >= MAX_ENERGY and not was_full:
+		energy_full.emit()
+	changed.emit()
+
+
+func combo_key() -> String:
+	var pair := [hands["left"], hands["right"]]
+	pair.sort()
+	return "+".join(pair)
+
+
+func combo_name() -> String:
+	return COMBOS.get(combo_key(), {}).get("name", "")

@@ -827,6 +827,7 @@ func hit_at(point: Vector2, tool := "stick") -> void:
 		if e.position.distance_to(point) < 14.0 + e.hit_radius:
 			e.take_damage(Game.stick_damage(), player.position)
 			Game.add_stat("fighter", Game.FIGHTER_PER_HIT)
+			Game.add_energy(Game.ENERGY_PER_MELEE_HIT)
 			hit_enemy = true
 	if hit_enemy:
 		last_hit = true
@@ -951,6 +952,142 @@ func _fist_impact(target: Vector2, dmg: float, radius: float, knockback: float, 
 			e.take_damage(dmg, target, knockback, "fiststamp")
 	if quake:
 		spawn_zone("quake", target, 48.0, 3.0, 0.0)
+
+
+# --- gauntlet powers & combos ----------------------------------------------
+
+func damage_area(center: Vector2, radius: float, dmg: float, source: String,
+		knockback := 150.0, effect := Callable()) -> int:
+	## Damage every enemy inside an iso ellipse; returns how many were hit.
+	var n := 0
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e.dead:
+			continue
+		var d: Vector2 = e.position - center
+		if Vector2(d.x, d.y * 2.0).length() < radius + e.hit_radius:
+			e.take_damage(dmg, center, knockback, source)
+			if effect.is_valid() and is_instance_valid(e) and not e.dead:
+				effect.call(e)
+			n += 1
+	return n
+
+
+func steel_punch(point: Vector2, dmg: float, shockwave := false) -> bool:
+	## One Fast Steel punch: steel fist flash + hit at point.
+	var fist := Sprite2D.new()
+	fist.texture = Game.icons["quicksteel"]
+	fist.position = point + Vector2(0, -12)
+	fist.z_index = 45
+	add_child(fist)
+	var tw := fist.create_tween()
+	tw.tween_property(fist, "scale", Vector2(1.3, 1.3), 0.05)
+	tw.tween_property(fist, "modulate:a", 0.0, 0.12)
+	tw.tween_callback(fist.queue_free)
+	ring_fx(point, 7.0, Color(0.75, 0.9, 1.0), 0.15)
+	var hit := damage_area(point, 13.0, dmg, "quicksteel", 90.0) > 0
+	if shockwave:
+		ring_fx(point, 34.0, Color(0.35, 0.75, 1.0), 0.35)
+		hit = damage_area(point, 34.0, dmg * 0.8, "quicksteel", 200.0) > 0 or hit
+	return hit
+
+
+func cast_combo(key: String, target: Vector2) -> void:
+	var combo: Dictionary = Game.COMBOS.get(key, {})
+	if combo.is_empty():
+		return
+	ui.show_title(combo["name"].to_upper(), "Gauntlet combo!", 0.5)
+	Game.energy_lock_until = Time.get_ticks_msec() + 3000   # its own hits don't recharge
+	var fire: float = Game.spell_damage("fireball")
+	var mud: float = Game.spell_damage("mudball")
+	var fist: float = Game.spell_damage("fiststamp")
+	var steel: float = Game.spell_damage("quicksteel")
+	match key:
+		"fireball+mudball":      # Magma Rain
+			for i in 10:
+				var off := Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(0.0, 60.0)
+				off.y *= 0.5
+				_meteor(target + off, i * 0.11, fire * 0.7 + mud * 0.5)
+		"fireball+fiststamp":    # Meteor Fist
+			var big := Sprite2D.new()
+			big.texture = Game.icons["fiststamp"]
+			big.modulate = Color(1.6, 0.8, 0.4, 0.0)
+			big.scale = Vector2(4, 4)
+			big.z_index = 55
+			big.position = target + Vector2(0, -120)
+			add_child(big)
+			var tw := create_tween()
+			tw.tween_property(big, "modulate:a", 1.0, 0.15)
+			tw.tween_property(big, "position", target + Vector2(0, -20), 0.35) \
+				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+			tw.tween_callback(func():
+				player.shake = 5.0
+				ring_fx(target, 80.0, Color(1, 0.55, 0.2), 0.6)
+				damage_area(target, 70.0, fist * 2.5, "fiststamp", 320.0)
+				damage_area(target, 70.0, fire * 1.5, "fireball", 0.0)
+				spawn_zone("lava", target, 36.0, 6.0, fire * 0.6))
+			tw.tween_property(big, "modulate:a", 0.0, 0.3)
+			tw.tween_callback(big.queue_free)
+		"fiststamp+mudball":     # Earthquake
+			var center: Vector2 = player.position
+			spawn_zone("quake", center, 120.0, 4.0, 0.0)
+			for i in 3:
+				get_tree().create_timer(i * 0.6).timeout.connect(func():
+					player.shake = 4.0
+					ring_fx(center, 120.0, Color(0.75, 0.6, 0.4), 0.5)
+					damage_area(center, 120.0, fist * 0.8 + mud * 0.4, "fiststamp", 120.0,
+						func(e): e.slow(3.0)))
+		"fireball+quicksteel":   # Blazing Rush
+			var from: Vector2 = player.position
+			var to := from + (target - from).limit_length(120.0)
+			var already := []
+			var tw := create_tween()
+			tw.tween_method(func(k: float):
+				var p := from.lerp(to, k)
+				if not is_walkable_at(p):
+					return
+				player.position = p
+				for e in get_tree().get_nodes_in_group("enemies"):
+					if e in already or e.dead:
+						continue
+					if e.position.distance_to(p) < 16.0 + e.hit_radius:
+						already.append(e)
+						e.take_damage(steel * 2.0, p, 220.0, "quicksteel")
+						if is_instance_valid(e) and not e.dead:
+							e.take_damage(fire * 0.8, p, 0.0, "fireball")
+				if int(k * 100) % 16 == 0:
+					spawn_zone("lava", p, 10.0, 3.0, fire * 0.4), 0.0, 1.0, 0.3)
+			tw.tween_callback(func(): player.last_cell = screen_to_grid(player.position))
+		"mudball+quicksteel":    # Mud Flurry
+			spawn_zone("mud", player.position, 44.0, 4.0, 0.0)
+			for i in 10:
+				get_tree().create_timer(i * 0.06).timeout.connect(func():
+					var p: Vector2 = player.position + Vector2.from_angle(TAU * i / 10.0) * Vector2(24, 12)
+					steel_punch(p, steel * 1.2)
+					damage_area(p, 14.0, mud * 0.5, "mudball", 0.0, func(e): e.root(2.0)))
+		"fiststamp+quicksteel":  # Steel Storm
+			for i in 12:
+				var off := Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(0.0, 50.0)
+				off.y *= 0.5
+				_drop_fist(target + off, fist * 0.7, 22.0, 150.0, 0.12, i * 0.08, "quicksteel", false)
+
+
+func _meteor(at: Vector2, delay: float, dmg: float) -> void:
+	var m := Sprite2D.new()
+	m.texture = preload("res://assets/sprites/fireball_proj.png")
+	m.scale = Vector2(1.6, 1.6)
+	m.z_index = 50
+	m.position = at + Vector2(-30, -110)
+	m.modulate.a = 0.0
+	add_child(m)
+	var tw := create_tween()
+	tw.tween_interval(delay)
+	tw.tween_property(m, "modulate:a", 1.0, 0.05)
+	tw.tween_property(m, "position", at + Vector2(0, -6), 0.3).set_ease(Tween.EASE_IN)
+	tw.tween_callback(func():
+		ring_fx(at, 20.0, Color(1, 0.5, 0.15), 0.35)
+		damage_area(at, 20.0, dmg, "fireball", 120.0, func(e): e.slow(2.0))
+		spawn_zone("lava", at, 12.0, 3.0, dmg * 0.4)
+		m.queue_free())
 
 
 func spawn_zone(kind: String, pos: Vector2, radius: float, duration: float, dps: float) -> void:

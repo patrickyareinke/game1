@@ -1,6 +1,6 @@
-# Iso Survival
+# Gauntlet Alchemist
 
-Isometric 2D building & survival game in SNES-style pixel art, made with **Godot 4**.
+You are the **Gauntlet Alchemist**: an isometric 2D alchemy, building & survival game in SNES-style pixel art, made with **Godot 4**. You wear two magic gauntlets, each carrying one power, and when your energy is full you can fuse them into a combination attack.
 
 ## Run it
 
@@ -11,9 +11,10 @@ Isometric 2D building & survival game in SNES-style pixel art, made with **Godot
 Controls:
 - **WASD**: walk (hold **Shift** to run)
 - **Left click**: swing stick toward the mouse (hits slimes, cuts bushes, shakes trees)
-- **Right click**: cast the active spell toward the mouse
-- **Q**: spell ring (pick Fireball, Mudball or Magic Fiststamp; or press 1/2/3)
-- **E**: inventory (5x8) with coins and stats; click the spellbook to read your spells
+- **Right click**: power of the right-hand gauntlet
+- **Q**: power of the left-hand gauntlet
+- **R**: gauntlet combo (when the energy bar is full)
+- **E**: inventory (5x8) with money and stats; click a gauntlet to wear it on the right hand, right-click for the left hand; click the book to read powers and combos
 - **F**: pick up what lies at your feet (hidden stash, monster remains), otherwise scoop water at a pond
 - **Mouse wheel**: switch tool (stick / axe / pickaxe), or click a tool in the inventory
 - **B**: toggle build mode (left click places a crate, right click removes it)
@@ -37,6 +38,26 @@ The **Hive Mantis** guards its heart with a claw cage:
 2. **Burn the heart**: only *fireballs* damage the exposed heart (30 HP). After 12 s the claws close again.
 
 Entering the cave plays a short intro (fade to black, reveal, roar). Six slimes crawl around the boss room, half of them spit slime. The boss spits acid at you and slams its claws where a red circle appears. If you faint, you wake up at the village fire and the boss heals. Reward: 100 coins. Behind the boss hangs a silk cocoon: once the Mantis is dead, burst it with a fireball or Magic Fiststamp (2 hits) to free the girl inside.
+
+## Gauntlets & combos
+
+| Gauntlet | Power | Cost |
+|---|---|---|
+| Ember Gauntlet | Fireball | 1 Oil + 1 Ash |
+| Mire Gauntlet | Mudball | 1 Water |
+| Titan Gauntlet | Magic Fiststamp | free, 2 s cooldown |
+| Fast Steel Gauntlet | Fast Steel: flurry of 3 steel punches | free, 0.5 s cooldown |
+
+Energy fills when you hit enemies (+7 per power hit, +4 per melee hit). Full energy + **R** fires the combo of the two gauntlets you wear (combo hits don't refill energy):
+
+| Pair | Combo |
+|---|---|
+| Fireball + Mudball | **Magma Rain**: molten meteors around the cursor, leaving lava |
+| Fireball + Fiststamp | **Meteor Fist**: giant burning fist, huge blast + lava |
+| Fiststamp + Mudball | **Earthquake**: big area damage around you, everyone slowed |
+| Fireball + Fast Steel | **Blazing Rush**: dash to the cursor through enemies, trail of fire |
+| Mudball + Fast Steel | **Mud Flurry**: punch storm all around you, enemies stuck |
+| Fiststamp + Fast Steel | **Steel Storm**: rain of small steel fists around the cursor |
 
 ## Stats & spells
 

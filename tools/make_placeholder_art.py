@@ -1130,6 +1130,61 @@ def make_ui():
     save(add_outline(img), "icons", "money.png")
 
 
+def make_gauntlets():
+    """Gauntlet items (16x16): armoured glove, element gem, matching trim.
+    Saved as icons/g_<power>.png; Fast Steel also as its power icon."""
+    def gauntlet(name, plate, trim, gem, extra=None):
+        img = icon(); d = ImageDraw.Draw(img)
+        P = [tuple(int(v * k) for v in plate[:3]) + (255,) for k in (0.55, 0.75, 1.0, 1.2)]
+        P = [tuple(min(255, v) for v in p_) for p_ in P]
+        # cuff
+        d.rectangle((4, 11, 11, 15), fill=P[1]); d.rectangle((4, 11, 5, 15), fill=P[2])
+        d.line((4, 11, 11, 11), fill=trim); d.line((4, 15, 11, 15), fill=P[0])
+        # back of the hand / fist
+        d.rounded_rectangle((3, 3, 12, 11), radius=2, fill=P[1])
+        d.rounded_rectangle((3, 3, 9, 8), radius=2, fill=P[2])
+        for x in (4, 6, 8, 10):                                  # knuckle plates
+            d.rectangle((x, 2, x + 1, 4), fill=P[3] if x < 8 else P[2])
+            d.point((x, 5), fill=P[0])
+        d.rectangle((12, 6, 13, 9), fill=P[1])                   # thumb
+        # gem with highlight
+        d.ellipse((6, 6, 10, 10), fill=trim)
+        d.ellipse((7, 7, 9, 9), fill=gem)
+        d.point((7, 7), fill=(255, 255, 255, 255))
+        if extra:
+            extra(d)
+        add_outline(img)
+        save(img, "icons", "g_%s.png" % name)
+        return img
+
+    def flames(d):
+        d.point([(2, 1), (13, 0), (14, 2)], fill=c("f8a030"))
+    gauntlet("fireball", c("8a5a3a"), c("d8a040"), c("f0501c"), flames)
+    gauntlet("mudball", c("6a5034"), c("8a7048"), c("8a5a2a"))
+    gauntlet("fiststamp", c("7a7890"), c("b08ae0"), c("9a5ae8"))
+
+    def speed(d):
+        for y in (3, 6, 9):
+            d.line((0, y, 1, y), fill=c("a8d8ff"))
+    img = gauntlet("quicksteel", c("a8b0c0"), c("e0e8f0"), c("58b8f0"), speed)
+    save(img, "icons", "quicksteel.png")
+
+    # Fast Steel upgrade icons
+    def up(name, draw):
+        im = icon(); dd = ImageDraw.Draw(im)
+        draw(dd)
+        save(add_outline(im), "icons", "up_%s.png" % name)
+    STEEL, STEEL_L = c("a8b0c0"), c("e0e8f0")
+    up("reach", lambda d: (d.rounded_rectangle((9, 5, 15, 11), radius=2, fill=STEEL),
+                           d.line((1, 8, 8, 8), fill=STEEL_L), d.line((3, 6, 7, 6), fill=c("a8d8ff")),
+                           d.line((3, 10, 7, 10), fill=c("a8d8ff"))))
+    up("hundred", lambda d: [d.rounded_rectangle((x, y, x + 5, y + 4), radius=1, fill=STEEL if (x + y) % 2 else STEEL_L)
+                             for (x, y) in ((1, 1), (8, 2), (4, 6), (10, 8), (2, 11))])
+    up("shock", lambda d: (d.rounded_rectangle((5, 4, 11, 10), radius=2, fill=STEEL),
+                           d.arc((1, 1, 15, 15), 200, 340, fill=c("58b8f0"), width=1),
+                           d.arc((0, 3, 16, 17), 20, 160, fill=c("58b8f0"), width=1)))
+
+
 if __name__ == "__main__":
     make_terrain()
     make_tree()
@@ -1151,3 +1206,4 @@ if __name__ == "__main__":
     make_heart()
     make_cocoon_and_stump()
     make_ui()
+    make_gauntlets()

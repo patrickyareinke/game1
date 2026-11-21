@@ -24,6 +24,7 @@ const SWINGS := {
 }
 const WIND_BACK := deg_to_rad(35.0)  # how far the tool is raised before striking
 const STRIKE_END := 0.72             # share of the swing where the strike ends
+const FLURRY_GAP := 0.09             # Fast Steel: time between punches
 const REACH := 16.0
 const INVULN_TIME := 1.0
 const BODY_LENGTH := 32.0             # sprite height in world pixels
@@ -43,6 +44,10 @@ var smear_to := 0.0
 var smear_alpha := 0.0
 var smear: Node2D
 var shake := 0.0                     # camera shake strength (pixels)
+var flurry_left := 0                 # Fast Steel punches still to throw
+var flurry_t := 0.0
+var flurry_dmg := 1.0
+var flurry_aim := Vector2.RIGHT
 var cam_base := Vector2.ZERO         # camera offset without shake
 var knock := Vector2.ZERO
 var invuln := 0.0
@@ -159,7 +164,10 @@ func _physics_process(delta: float) -> void:
 		world.on_player_cell(cell)
 
 	hurt_t = maxf(hurt_t - delta, 0.0)
-	if swing_t >= 0.0:
+	_update_flurry(delta)
+	if flurry_left > 0:
+		_set_frame(Anim.ATTACK, anim_t * 14.0)            # rapid punching
+	elif swing_t >= 0.0:
 		_set_frame(Anim.ATTACK, clampf(swing_t / swing["time"], 0.0, 0.999), true)
 	elif hurt_t > 0.0:
 		_set_frame(Anim.HURT, 1.0 - hurt_t / HURT_TIME, true)
@@ -197,6 +205,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	if key and key.pressed and not key.echo and key.physical_keycode == KEY_F:
 		_interact()
 		return
+	if key and key.pressed and not key.echo and not Game.ui_open and not Game.build_mode:
+		if key.physical_keycode == KEY_Q:
+			_cast(Game.hands["left"])       # left-hand gauntlet
+			return
+		if key.physical_keycode == KEY_R:
+			_combo()
+			return
 
 	var mb := event as InputEventMouseButton
 	if not (mb and mb.pressed) or Game.ui_open or Game.build_mode:
@@ -207,7 +222,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if mb.button_index == MOUSE_BUTTON_LEFT and swing_t < 0.0:
 		_start_swing()
 	elif mb.button_index == MOUSE_BUTTON_RIGHT:
-		_cast(Game.active_spell)
+		_cast(Game.hands["right"])          # right-hand gauntlet
 
 
 # --- stick -----------------------------------------------------------------
@@ -323,8 +338,45 @@ func _cast(id: String) -> void:
 			world.spawn_projectile(id, position, target, dmg, up)
 		"fiststamp":
 			world.spawn_fiststamp(target, dmg, up)   # no range limit
+		"quicksteel":
+			flurry_left = 5 if up == "hundred" else 3
+			flurry_t = 0.0
+			flurry_dmg = dmg
+			flurry_aim = (target - position).normalized()
 	cooldowns[id] = Game.SPELLS[id]["cooldown"]
 	Game.cast(id)
+
+
+func _update_flurry(delta: float) -> void:
+	## Fast Steel: a punch every FLURRY_GAP seconds toward the aim.
+	if flurry_left <= 0:
+		return
+	flurry_t -= delta
+	if flurry_t > 0.0:
+		return
+	flurry_t = FLURRY_GAP
+	flurry_left -= 1
+	var up: String = Game.spell_upgrade["quicksteel"]
+	var reach := 24.0 if up == "reach" else 17.0
+	if up == "reach":                                   # small lunge
+		var step := flurry_aim * 4.0
+		if world.is_walkable_at(position + step):
+			position += step
+	var wobble := Vector2(flurry_aim.y, -flurry_aim.x) * randf_range(-5.0, 5.0)
+	var point := position + flurry_aim * reach + wobble
+	var last := flurry_left == 0
+	if world.steel_punch(point, flurry_dmg, last and up == "shock"):
+		shake = 1.2
+	dir = _dir_from(flurry_aim)
+
+
+func _combo() -> void:
+	## Energy full: combination attack of the two worn gauntlets.
+	if Game.energy < Game.MAX_ENERGY or Game.cutscene:
+		return
+	Game.energy = 0.0
+	Game.changed.emit()
+	world.cast_combo(Game.combo_key(), get_global_mouse_position())
 
 
 # --- misc ------------------------------------------------------------------
